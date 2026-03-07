@@ -28,12 +28,16 @@ version = "0.1.0"
 dependencies = [
  "anyhow",
  "axum",
+ "base64",
  "core-types",
  "db",
  "jsonwebtoken",
  "serde",
+ "serde_json",
  "telemetry",
  "tokio",
+ "tower",
+ "uuid",
 ]
 
 [[package]]

@@ -73,6 +73,24 @@ pub async fn issue_agent_token(
     let scopes = normalize_scopes(payload.scopes)?;
     let now = unix_timestamp_now()?;
     let expires_in = payload.expires_in_seconds.unwrap_or(3600);
+    let now_u64 = u64::try_from(now).map_err(|_| {
+        (
+            StatusCode::INTERNAL_SERVER_ERROR,
+            "current timestamp does not fit in u64".to_string(),
+        )
+    })?;
+    let exp_u64 = now_u64.checked_add(expires_in).ok_or_else(|| {
+        (
+            StatusCode::INTERNAL_SERVER_ERROR,
+            "expires_in_seconds is too large".to_string(),
+        )
+    })?;
+    let exp = usize::try_from(exp_u64).map_err(|_| {
+        (
+            StatusCode::INTERNAL_SERVER_ERROR,
+            "expires_at does not fit platform usize".to_string(),
+        )
+    })?;
     let exp = now.saturating_add(expires_in as usize);
 
     let claims = AgentTokenClaims {
@@ -83,6 +101,7 @@ pub async fn issue_agent_token(
         exp,
     };
 
+    let secret = signing_secret_from_env()?;
     let secret = std::env::var("AGENT_TOKEN_SIGNING_SECRET")
         .unwrap_or_else(|_| "dev-agent-token-signing-secret".to_string());
 
@@ -123,6 +142,14 @@ fn unix_timestamp_now() -> Result<usize, (StatusCode, String)> {
     let now = std::time::SystemTime::now()
         .duration_since(std::time::UNIX_EPOCH)
         .map_err(internal_error)?
+        .as_secs();
+
+    usize::try_from(now).map_err(|_| {
+        (
+            StatusCode::INTERNAL_SERVER_ERROR,
+            "current timestamp does not fit platform usize".to_string(),
+        )
+    })
         .as_secs() as usize;
 
     Ok(now)
@@ -136,6 +163,25 @@ fn internal_error<E: std::fmt::Display>(error: E) -> (StatusCode, String) {
     )
 }
 
+/// Loads and validates the configured agent token signing secret.
+fn signing_secret_from_env() -> Result<String, (StatusCode, String)> {
+    let secret = std::env::var("AGENT_TOKEN_SIGNING_SECRET").map_err(|_| {
+        (
+            StatusCode::INTERNAL_SERVER_ERROR,
+            "AGENT_TOKEN_SIGNING_SECRET must be configured".to_string(),
+        )
+    })?;
+
+    if secret.len() < 32 {
+        return Err((
+            StatusCode::INTERNAL_SERVER_ERROR,
+            "AGENT_TOKEN_SIGNING_SECRET must be at least 32 characters".to_string(),
+        ));
+    }
+
+    Ok(secret)
+}
+
 impl IntoResponse for IssueAgentTokenResponse {
     fn into_response(self) -> axum::response::Response {
         Json(self).into_response()
@@ -144,6 +190,18 @@ impl IntoResponse for IssueAgentTokenResponse {
 
 #[cfg(test)]
 mod tests {
+    use std::sync::{Mutex, OnceLock};
+
+    use super::*;
+    use jsonwebtoken::{decode, DecodingKey, Validation};
+
+    const TEST_SIGNING_SECRET: &str = "integration-secret-with-32-chars";
+
+    fn env_lock() -> &'static Mutex<()> {
+        static ENV_LOCK: OnceLock<Mutex<()>> = OnceLock::new();
+        ENV_LOCK.get_or_init(|| Mutex::new(()))
+    }
+
     use super::*;
     use jsonwebtoken::{decode, DecodingKey, Validation};
 
@@ -166,6 +224,18 @@ mod tests {
         );
     }
 
+    #[test]
+    fn normalize_scopes_rejects_empty_input() {
+        let error = normalize_scopes(vec!["   ".to_string()]).expect_err("expected invalid scopes");
+
+        assert_eq!(error.0, StatusCode::BAD_REQUEST);
+        assert_eq!(error.1, "at least one scope is required");
+    }
+
+    #[tokio::test]
+    async fn issued_token_binds_to_path_agent_id() {
+        let _guard = env_lock().lock().expect("env lock should not be poisoned");
+        std::env::set_var("AGENT_TOKEN_SIGNING_SECRET", TEST_SIGNING_SECRET);
     #[tokio::test]
     async fn issued_token_binds_to_path_agent_id() {
         std::env::set_var("AGENT_TOKEN_SIGNING_SECRET", "integration-secret");
@@ -186,10 +256,12 @@ mod tests {
 
         let token = response.0.token;
         let mut validation = Validation::new(Algorithm::HS256);
+        // Expiration is intentionally not validated so the test only verifies claim contents.
         validation.validate_exp = false;
 
         let decoded = decode::<AgentTokenClaims>(
             &token,
+            &DecodingKey::from_secret(TEST_SIGNING_SECRET.as_bytes()),
             &DecodingKey::from_secret("integration-secret".as_bytes()),
             &validation,
         )
@@ -205,6 +277,50 @@ mod tests {
                 "tool:slack.post".to_string()
             ]
         );
+
+        std::env::remove_var("AGENT_TOKEN_SIGNING_SECRET");
+    }
+
+    #[tokio::test]
+    async fn issue_agent_token_rejects_blank_tenant_id() {
+        let response = issue_agent_token(
+            Path("agent-a".to_string()),
+            Json(IssueAgentTokenRequest {
+                tenant_id: "   ".to_string(),
+                scopes: vec!["tool:github.read".to_string()],
+                expires_in_seconds: Some(600),
+            }),
+        )
+        .await
+        .expect_err("expected tenant validation failure");
+
+        assert_eq!(response.0, StatusCode::BAD_REQUEST);
+        assert_eq!(response.1, "tenant_id must not be empty");
+    }
+
+    #[tokio::test]
+    async fn issue_agent_token_rejects_short_signing_secret() {
+        let _guard = env_lock().lock().expect("env lock should not be poisoned");
+        std::env::set_var("AGENT_TOKEN_SIGNING_SECRET", "short-test-secret");
+
+        let response = issue_agent_token(
+            Path("agent-a".to_string()),
+            Json(IssueAgentTokenRequest {
+                tenant_id: "tenant-1".to_string(),
+                scopes: vec!["tool:github.read".to_string()],
+                expires_in_seconds: Some(600),
+            }),
+        )
+        .await
+        .expect_err("expected signing secret validation failure");
+
+        assert_eq!(response.0, StatusCode::INTERNAL_SERVER_ERROR);
+        assert_eq!(
+            response.1,
+            "AGENT_TOKEN_SIGNING_SECRET must be at least 32 characters"
+        );
+
+        std::env::remove_var("AGENT_TOKEN_SIGNING_SECRET");
     }
 
     #[test]
@@ -220,6 +336,7 @@ mod tests {
             exp: 3601,
         };
 
+        let secret = "test-secret-with-32-characters!!";
         let secret = "test-secret";
         let token = encode(
             &Header::new(Algorithm::HS256),
