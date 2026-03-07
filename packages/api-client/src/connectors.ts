@@ -54,3 +54,34 @@ export async function exchangeNotionCode(
   });
   if (!res.ok) throw new Error(`exchangeNotionCode failed: ${res.status}`);
 }
+
+/**
+ * Gets the OAuth redirect URL for Google Workspace.
+ */
+export async function getGoogleOAuthUrl(
+  token: string,
+): Promise<OAuthStartResponse> {
+  const res = await fetch(`${API_BASE}/connectors/google/oauth-url`, {
+    headers: { Authorization: `Bearer ${token}` },
+  });
+  if (!res.ok) throw new Error(`getGoogleOAuthUrl failed: ${res.status}`);
+  return res.json();
+}
+
+/**
+ * Exchanges the Google OAuth callback code for a stored access token.
+ */
+export async function exchangeGoogleCode(
+  token: string,
+  code: string,
+): Promise<void> {
+  const res = await fetch(`${API_BASE}/connectors/google/callback`, {
+    method: "POST",
+    headers: {
+      "Content-Type": "application/json",
+      Authorization: `Bearer ${token}`,
+    },
+    body: JSON.stringify({ code }),
+  });
+  if (!res.ok) throw new Error(`exchangeGoogleCode failed: ${res.status}`);
+}

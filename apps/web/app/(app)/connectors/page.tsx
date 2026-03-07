@@ -5,6 +5,7 @@ import { useAuth } from "@/contexts/AuthContext";
 import {
   listConnectors,
   getNotionOAuthUrl,
+  getGoogleOAuthUrl,
   type ConnectorInfo,
 } from "@api-client";
 
@@ -29,6 +30,18 @@ export default function ConnectorsPage() {
       window.location.href = redirect_url;
     } catch (e) {
       setError(e instanceof Error ? e.message : "Failed to start Notion OAuth");
+    }
+  };
+
+  const handleConnectGoogle = async () => {
+    if (!token) return;
+    try {
+      const { redirect_url } = await getGoogleOAuthUrl(token);
+      window.location.href = redirect_url;
+    } catch (e) {
+      setError(
+        e instanceof Error ? e.message : "Failed to start Google OAuth",
+      );
     }
   };
 
@@ -66,6 +79,13 @@ export default function ConnectorsPage() {
                   className="rounded-lg bg-indigo-600 px-4 py-2 text-sm font-semibold text-white hover:bg-indigo-700"
                 >
                   Connect Notion
+                </button>
+              ) : c.name === "google_workspace" ? (
+                <button
+                  onClick={handleConnectGoogle}
+                  className="rounded-lg bg-indigo-600 px-4 py-2 text-sm font-semibold text-white hover:bg-indigo-700"
+                >
+                  Connect Google
                 </button>
               ) : (
                 <span className="text-xs text-zinc-400">Coming soon</span>

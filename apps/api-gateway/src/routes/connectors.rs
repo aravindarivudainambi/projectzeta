@@ -120,3 +120,41 @@ pub async fn notion_oauth_callback(
         .map_err(|e| (StatusCode::BAD_GATEWAY, e.to_string()))?;
     Ok(Json(body))
 }
+
+/// Proxies to connector hub's Google OAuth start endpoint.
+pub async fn google_oauth_start(
+    State(state): State<AppState>,
+) -> Result<Json<Value>, (StatusCode, String)> {
+    let resp = state
+        .http_client
+        .get(format!("{CONNECTOR_HUB_URL}/oauth/google/start"))
+        .send()
+        .await
+        .map_err(|e| (StatusCode::BAD_GATEWAY, e.to_string()))?;
+
+    let body: Value = resp
+        .json()
+        .await
+        .map_err(|e| (StatusCode::BAD_GATEWAY, e.to_string()))?;
+    Ok(Json(body))
+}
+
+/// Proxies the Google OAuth callback code exchange to connector hub.
+pub async fn google_oauth_callback(
+    State(state): State<AppState>,
+    Json(payload): Json<Value>,
+) -> Result<Json<Value>, (StatusCode, String)> {
+    let resp = state
+        .http_client
+        .post(format!("{CONNECTOR_HUB_URL}/oauth/google/callback"))
+        .json(&payload)
+        .send()
+        .await
+        .map_err(|e| (StatusCode::BAD_GATEWAY, e.to_string()))?;
+
+    let body: Value = resp
+        .json()
+        .await
+        .map_err(|e| (StatusCode::BAD_GATEWAY, e.to_string()))?;
+    Ok(Json(body))
+}

@@ -109,3 +109,130 @@ pub async fn notion_oauth_callback(
         "bot_id": token_resp.bot_id,
     })))
 }
+
+// ---------------------------------------------------------------------------
+// Google OAuth
+// ---------------------------------------------------------------------------
+
+/// Payload sent from the frontend after receiving the Google authorization code.
+#[derive(Debug, Deserialize)]
+pub struct GoogleCallbackPayload {
+    pub code: String,
+    pub state: Option<String>,
+}
+
+#[derive(Debug, Deserialize)]
+struct GoogleTokenResponse {
+    access_token: String,
+    refresh_token: Option<String>,
+    expires_in: Option<u64>,
+    scope: Option<String>,
+}
+
+/// Returns the Google OAuth authorization URL for the frontend to redirect to.
+pub async fn start_google_oauth(
+    State(state): State<HubState>,
+) -> Result<Json<OAuthStartResponse>, (StatusCode, String)> {
+    let client_id = state.config.google_client_id.as_deref().ok_or((
+        StatusCode::INTERNAL_SERVER_ERROR,
+        "GOOGLE_CLIENT_ID not set".to_string(),
+    ))?;
+    let redirect_uri = state.config.google_redirect_uri.as_deref().ok_or((
+        StatusCode::INTERNAL_SERVER_ERROR,
+        "GOOGLE_REDIRECT_URI not set".to_string(),
+    ))?;
+
+    let scopes = [
+        "https://www.googleapis.com/auth/calendar.readonly",
+        "https://www.googleapis.com/auth/calendar.events",
+        "https://www.googleapis.com/auth/gmail.readonly",
+        "https://www.googleapis.com/auth/drive.readonly",
+        "https://www.googleapis.com/auth/drive.metadata.readonly",
+    ]
+    .join(" ");
+
+    let url = format!(
+        "https://accounts.google.com/o/oauth2/v2/auth?\
+         client_id={}&\
+         redirect_uri={}&\
+         response_type=code&\
+         scope={}&\
+         access_type=offline&\
+         prompt=consent",
+        urlencoding::encode(client_id),
+        urlencoding::encode(redirect_uri),
+        urlencoding::encode(&scopes),
+    );
+
+    Ok(Json(OAuthStartResponse { redirect_url: url }))
+}
+
+/// Exchanges the Google authorization code for an access token and stores it in the vault.
+pub async fn google_oauth_callback(
+    State(state): State<HubState>,
+    Json(payload): Json<GoogleCallbackPayload>,
+) -> Result<Json<serde_json::Value>, (StatusCode, String)> {
+    let client_id = state.config.google_client_id.as_deref().ok_or((
+        StatusCode::INTERNAL_SERVER_ERROR,
+        "GOOGLE_CLIENT_ID not set".to_string(),
+    ))?;
+    let client_secret = state.config.google_client_secret.as_deref().ok_or((
+        StatusCode::INTERNAL_SERVER_ERROR,
+        "GOOGLE_CLIENT_SECRET not set".to_string(),
+    ))?;
+    let redirect_uri = state.config.google_redirect_uri.as_deref().ok_or((
+        StatusCode::INTERNAL_SERVER_ERROR,
+        "GOOGLE_REDIRECT_URI not set".to_string(),
+    ))?;
+
+    // Google uses a standard form-encoded POST body (not Basic Auth like Notion).
+    let http = reqwest::Client::new();
+    let resp = http
+        .post("https://oauth2.googleapis.com/token")
+        .form(&[
+            ("client_id", client_id),
+            ("client_secret", client_secret),
+            ("code", payload.code.as_str()),
+            ("redirect_uri", redirect_uri),
+            ("grant_type", "authorization_code"),
+        ])
+        .send()
+        .await
+        .map_err(|e| (StatusCode::BAD_GATEWAY, e.to_string()))?;
+
+    if !resp.status().is_success() {
+        let body = resp.text().await.unwrap_or_default();
+        return Err((
+            StatusCode::BAD_GATEWAY,
+            format!("Google token exchange failed: {body}"),
+        ));
+    }
+
+    let token_resp: GoogleTokenResponse = resp
+        .json()
+        .await
+        .map_err(|e| (StatusCode::BAD_GATEWAY, e.to_string()))?;
+
+    // Store the access token in the in-memory vault.
+    let user_id = payload
+        .state
+        .and_then(|s| uuid::Uuid::parse_str(&s).ok())
+        .unwrap_or(uuid::Uuid::nil());
+    state
+        .vault
+        .set_token(user_id, "google_workspace", &token_resp.access_token);
+
+    // Store refresh token separately for future token refresh logic.
+    if let Some(ref refresh) = token_resp.refresh_token {
+        state
+            .vault
+            .set_token(user_id, "google_workspace_refresh", refresh);
+    }
+
+    Ok(Json(serde_json::json!({
+        "success": true,
+        "has_refresh_token": token_resp.refresh_token.is_some(),
+        "expires_in": token_resp.expires_in,
+        "scope": token_resp.scope,
+    })))
+}

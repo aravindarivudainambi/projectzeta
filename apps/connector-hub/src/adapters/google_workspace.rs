@@ -130,6 +130,9 @@ pub struct DriveFile {
     pub web_view_link: Option<String>,
     #[serde(rename = "createdTime")]
     pub created_time: Option<String>,
+    #[serde(rename = "modifiedTime")]
+    pub modified_time: Option<String>,
+    pub size: Option<String>,
 }
 
 /// Top-level envelope for a Drive v3 `files.list` response.
@@ -140,6 +143,79 @@ pub struct DriveFilesResponse {
     pub next_page_token: Option<String>,
     #[serde(rename = "incompleteSearch")]
     pub incomplete_search: Option<bool>,
+}
+
+// ---------------------------------------------------------------------------
+// Response types — Gmail v1 (full message)
+// ---------------------------------------------------------------------------
+
+/// Full Gmail message as returned by `messages.get`.
+#[derive(Debug, Clone, Serialize, Deserialize)]
+pub struct GmailMessage {
+    pub id: String,
+    #[serde(rename = "threadId")]
+    pub thread_id: Option<String>,
+    #[serde(rename = "labelIds")]
+    pub label_ids: Option<Vec<String>>,
+    pub snippet: Option<String>,
+    pub payload: Option<GmailPayload>,
+    #[serde(rename = "internalDate")]
+    pub internal_date: Option<String>,
+}
+
+/// The payload (headers + body) of a Gmail message.
+#[derive(Debug, Clone, Serialize, Deserialize)]
+pub struct GmailPayload {
+    pub headers: Option<Vec<GmailHeader>>,
+    pub parts: Option<Vec<GmailPart>>,
+    pub body: Option<GmailBody>,
+    #[serde(rename = "mimeType")]
+    pub mime_type: Option<String>,
+}
+
+/// A single header key-value pair on a Gmail message.
+#[derive(Debug, Clone, Serialize, Deserialize)]
+pub struct GmailHeader {
+    pub name: String,
+    pub value: String,
+}
+
+/// A MIME part within a Gmail message payload.
+#[derive(Debug, Clone, Serialize, Deserialize)]
+pub struct GmailPart {
+    #[serde(rename = "mimeType")]
+    pub mime_type: Option<String>,
+    pub body: Option<GmailBody>,
+}
+
+/// The body of a Gmail message part (base64url-encoded).
+#[derive(Debug, Clone, Serialize, Deserialize)]
+pub struct GmailBody {
+    pub size: Option<u64>,
+    pub data: Option<String>,
+}
+
+// ---------------------------------------------------------------------------
+// Response types — Calendar v3 (calendar list)
+// ---------------------------------------------------------------------------
+
+/// A single entry from the user's calendar list.
+#[derive(Debug, Clone, Serialize, Deserialize)]
+pub struct CalendarListEntry {
+    pub id: String,
+    pub summary: Option<String>,
+    pub description: Option<String>,
+    pub primary: Option<bool>,
+    #[serde(rename = "accessRole")]
+    pub access_role: Option<String>,
+}
+
+/// Top-level envelope for a Calendar v3 `calendarList.list` response.
+#[derive(Debug, Clone, Serialize, Deserialize)]
+pub struct CalendarListResponse {
+    pub items: Vec<CalendarListEntry>,
+    #[serde(rename = "nextPageToken")]
+    pub next_page_token: Option<String>,
 }
 
 // ---------------------------------------------------------------------------
@@ -432,6 +508,339 @@ pub async fn access_google_workspace() -> Result<()> {
     let adapter = GoogleWorkspaceAdapter::from_env()?;
     let _events = adapter.list_calendar_events("primary", Some(5)).await?;
     Ok(())
+}
+
+// ---------------------------------------------------------------------------
+// Stateless client (matches NotionClient pattern — token passed per call)
+// ---------------------------------------------------------------------------
+
+const CALENDAR_BASE: &str = "https://www.googleapis.com/calendar/v3";
+const GMAIL_BASE: &str = "https://gmail.googleapis.com/gmail/v1";
+const DRIVE_BASE: &str = "https://www.googleapis.com/drive/v3";
+
+/// Stateless HTTP client for Google Workspace APIs.
+///
+/// Mirrors [`NotionClient`]'s design: holds only a shared [`reqwest::Client`]
+/// for connection pooling and accepts a `token` parameter on every call so the
+/// hub can resolve credentials from the vault per-request.
+#[derive(Clone)]
+pub struct GoogleWorkspaceClient {
+    http: Client,
+}
+
+impl GoogleWorkspaceClient {
+    pub fn new(http: Client) -> Self {
+        Self { http }
+    }
+}
+
+/// Parses a Google API response, returning the body as a deserialized `T` on
+/// 2xx or an `anyhow` error containing the status code and body on failure.
+async fn parse_google_response<T: serde::de::DeserializeOwned>(
+    resp: reqwest::Response,
+    context: &str,
+) -> Result<T> {
+    let status = resp.status();
+    let body = resp.text().await.context("failed to read response body")?;
+    if status.is_success() {
+        serde_json::from_str(&body)
+            .with_context(|| format!("failed to parse {context} response"))
+    } else {
+        bail!("Google API error ({context}, HTTP {}): {}", status.as_u16(), body)
+    }
+}
+
+// ---------------------------------------------------------------------------
+// Calendar v3 methods (stateless client)
+// ---------------------------------------------------------------------------
+
+impl GoogleWorkspaceClient {
+    /// Lists events from a Google Calendar.
+    pub async fn list_calendar_events(
+        &self,
+        token: &str,
+        calendar_id: &str,
+        max_results: Option<u32>,
+    ) -> Result<CalendarEventsResponse> {
+        let url = format!(
+            "{CALENDAR_BASE}/calendars/{}/events",
+            urlencoding_encode(calendar_id),
+        );
+
+        let mut builder = self.http.get(&url).bearer_auth(token);
+        if let Some(n) = max_results {
+            builder = builder.query(&[("maxResults", n.to_string())]);
+        }
+
+        let resp = builder
+            .send()
+            .await
+            .context("google: list_calendar_events request failed")?;
+
+        parse_google_response(resp, "list_calendar_events").await
+    }
+
+    /// Retrieves a single calendar event by ID.
+    pub async fn get_calendar_event(
+        &self,
+        token: &str,
+        calendar_id: &str,
+        event_id: &str,
+    ) -> Result<CalendarEvent> {
+        let url = format!(
+            "{CALENDAR_BASE}/calendars/{}/events/{}",
+            urlencoding_encode(calendar_id),
+            urlencoding_encode(event_id),
+        );
+
+        let resp = self
+            .http
+            .get(&url)
+            .bearer_auth(token)
+            .send()
+            .await
+            .context("google: get_calendar_event request failed")?;
+
+        parse_google_response(resp, "get_calendar_event").await
+    }
+
+    /// Lists all calendars on the authenticated user's calendar list.
+    pub async fn list_calendars(&self, token: &str) -> Result<CalendarListResponse> {
+        let url = format!("{CALENDAR_BASE}/users/me/calendarList");
+
+        let resp = self
+            .http
+            .get(&url)
+            .bearer_auth(token)
+            .send()
+            .await
+            .context("google: list_calendars request failed")?;
+
+        parse_google_response(resp, "list_calendars").await
+    }
+
+    /// Creates a new event in a Google Calendar.
+    pub async fn create_calendar_event(
+        &self,
+        token: &str,
+        calendar_id: &str,
+        event: CreateEventRequest,
+    ) -> Result<CalendarEvent> {
+        let url = format!(
+            "{CALENDAR_BASE}/calendars/{}/events",
+            urlencoding_encode(calendar_id),
+        );
+
+        let resp = self
+            .http
+            .post(&url)
+            .bearer_auth(token)
+            .json(&event)
+            .send()
+            .await
+            .context("google: create_calendar_event request failed")?;
+
+        parse_google_response(resp, "create_calendar_event").await
+    }
+}
+
+// ---------------------------------------------------------------------------
+// Gmail v1 methods (stateless client)
+// ---------------------------------------------------------------------------
+
+impl GoogleWorkspaceClient {
+    /// Lists message references from the authenticated user's Gmail inbox.
+    pub async fn list_gmail_messages(
+        &self,
+        token: &str,
+        max_results: Option<u32>,
+    ) -> Result<GmailMessagesResponse> {
+        let url = format!("{GMAIL_BASE}/users/me/messages");
+
+        let mut builder = self.http.get(&url).bearer_auth(token);
+        if let Some(n) = max_results {
+            builder = builder.query(&[("maxResults", n.to_string())]);
+        }
+
+        let resp = builder
+            .send()
+            .await
+            .context("google: list_gmail_messages request failed")?;
+
+        parse_google_response(resp, "list_gmail_messages").await
+    }
+
+    /// Retrieves the full content of a single Gmail message.
+    ///
+    /// The `format` parameter controls how much detail is returned:
+    /// `"full"` (default), `"metadata"`, `"minimal"`, or `"raw"`.
+    pub async fn get_gmail_message(
+        &self,
+        token: &str,
+        message_id: &str,
+        format: Option<&str>,
+    ) -> Result<GmailMessage> {
+        let url = format!("{GMAIL_BASE}/users/me/messages/{message_id}");
+
+        let mut builder = self.http.get(&url).bearer_auth(token);
+        if let Some(fmt) = format {
+            builder = builder.query(&[("format", fmt)]);
+        }
+
+        let resp = builder
+            .send()
+            .await
+            .context("google: get_gmail_message request failed")?;
+
+        parse_google_response(resp, "get_gmail_message").await
+    }
+
+    /// Searches Gmail messages using Gmail's query syntax.
+    ///
+    /// Supports standard Gmail operators: `from:`, `subject:`, `after:`,
+    /// `before:`, `has:attachment`, `in:inbox`, etc.
+    pub async fn search_gmail_messages(
+        &self,
+        token: &str,
+        query: &str,
+        max_results: Option<u32>,
+    ) -> Result<GmailMessagesResponse> {
+        let url = format!("{GMAIL_BASE}/users/me/messages");
+
+        let mut builder = self.http.get(&url).bearer_auth(token).query(&[("q", query)]);
+        if let Some(n) = max_results {
+            builder = builder.query(&[("maxResults", n.to_string())]);
+        }
+
+        let resp = builder
+            .send()
+            .await
+            .context("google: search_gmail_messages request failed")?;
+
+        parse_google_response(resp, "search_gmail_messages").await
+    }
+}
+
+// ---------------------------------------------------------------------------
+// Drive v3 methods (stateless client)
+// ---------------------------------------------------------------------------
+
+impl GoogleWorkspaceClient {
+    /// Lists file metadata from the authenticated user's Google Drive.
+    pub async fn list_drive_files(
+        &self,
+        token: &str,
+        page_size: Option<u32>,
+    ) -> Result<DriveFilesResponse> {
+        let url = format!("{DRIVE_BASE}/files");
+
+        let mut builder = self
+            .http
+            .get(&url)
+            .bearer_auth(token)
+            .query(&[(
+                "fields",
+                "nextPageToken,incompleteSearch,files(id,name,mimeType,parents,webViewLink,createdTime,modifiedTime,size)",
+            )]);
+
+        if let Some(n) = page_size {
+            builder = builder.query(&[("pageSize", n.to_string())]);
+        }
+
+        let resp = builder
+            .send()
+            .await
+            .context("google: list_drive_files request failed")?;
+
+        parse_google_response(resp, "list_drive_files").await
+    }
+
+    /// Retrieves metadata for a single Drive file by ID.
+    pub async fn get_drive_file(&self, token: &str, file_id: &str) -> Result<DriveFile> {
+        let url = format!("{DRIVE_BASE}/files/{file_id}");
+
+        let resp = self
+            .http
+            .get(&url)
+            .bearer_auth(token)
+            .query(&[(
+                "fields",
+                "id,name,mimeType,parents,webViewLink,createdTime,modifiedTime,size",
+            )])
+            .send()
+            .await
+            .context("google: get_drive_file request failed")?;
+
+        parse_google_response(resp, "get_drive_file").await
+    }
+
+    /// Searches files in Google Drive using Drive's query syntax.
+    ///
+    /// Supports operators like `name contains 'report'`,
+    /// `mimeType = 'application/pdf'`, `modifiedTime > '2024-01-01'`.
+    pub async fn search_drive_files(
+        &self,
+        token: &str,
+        query: &str,
+        page_size: Option<u32>,
+    ) -> Result<DriveFilesResponse> {
+        let url = format!("{DRIVE_BASE}/files");
+
+        let mut builder = self
+            .http
+            .get(&url)
+            .bearer_auth(token)
+            .query(&[("q", query)])
+            .query(&[(
+                "fields",
+                "nextPageToken,incompleteSearch,files(id,name,mimeType,parents,webViewLink,createdTime,modifiedTime,size)",
+            )]);
+
+        if let Some(n) = page_size {
+            builder = builder.query(&[("pageSize", n.to_string())]);
+        }
+
+        let resp = builder
+            .send()
+            .await
+            .context("google: search_drive_files request failed")?;
+
+        parse_google_response(resp, "search_drive_files").await
+    }
+
+    /// Exports a Google Docs/Sheets/Slides file to the specified MIME type.
+    ///
+    /// Common export targets: `text/plain`, `text/csv`,
+    /// `application/pdf`, `text/html`.
+    pub async fn export_drive_file(
+        &self,
+        token: &str,
+        file_id: &str,
+        mime_type: &str,
+    ) -> Result<String> {
+        let url = format!("{DRIVE_BASE}/files/{file_id}/export");
+
+        let resp = self
+            .http
+            .get(&url)
+            .bearer_auth(token)
+            .query(&[("mimeType", mime_type)])
+            .send()
+            .await
+            .context("google: export_drive_file request failed")?;
+
+        let status = resp.status();
+        let body = resp.text().await.context("failed to read export response body")?;
+        if status.is_success() {
+            Ok(body)
+        } else {
+            bail!(
+                "Google API error (export_drive_file, HTTP {}): {}",
+                status.as_u16(),
+                body
+            )
+        }
+    }
 }
 
 // ---------------------------------------------------------------------------

@@ -7,6 +7,9 @@ pub struct Config {
     pub notion_client_id: Option<String>,
     pub notion_client_secret: Option<String>,
     pub notion_redirect_uri: Option<String>,
+    pub google_client_id: Option<String>,
+    pub google_client_secret: Option<String>,
+    pub google_redirect_uri: Option<String>,
 }
 
 impl Config {
@@ -18,6 +21,9 @@ impl Config {
             notion_client_id: std::env::var("NOTION_CLIENT_ID").ok(),
             notion_client_secret: std::env::var("NOTION_CLIENT_SECRET").ok(),
             notion_redirect_uri: std::env::var("NOTION_REDIRECT_URI").ok(),
+            google_client_id: std::env::var("GOOGLE_CLIENT_ID").ok(),
+            google_client_secret: std::env::var("GOOGLE_CLIENT_SECRET").ok(),
+            google_redirect_uri: std::env::var("GOOGLE_REDIRECT_URI").ok(),
         })
     }
 }

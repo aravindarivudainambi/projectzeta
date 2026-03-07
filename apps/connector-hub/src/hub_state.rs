@@ -1,3 +1,4 @@
+use crate::adapters::google_workspace::GoogleWorkspaceClient;
 use crate::adapters::notion::NotionClient;
 use crate::config::Config;
 use secret_vault::SecretVault;
@@ -6,6 +7,7 @@ use secret_vault::SecretVault;
 #[derive(Clone)]
 pub struct HubState {
     pub notion_client: NotionClient,
+    pub google_client: GoogleWorkspaceClient,
     pub vault: SecretVault,
     pub config: Config,
 }
@@ -14,7 +16,8 @@ impl HubState {
     pub fn new(config: Config) -> Self {
         let http = reqwest::Client::new();
         Self {
-            notion_client: NotionClient::new(http),
+            notion_client: NotionClient::new(http.clone()),
+            google_client: GoogleWorkspaceClient::new(http),
             vault: SecretVault::from_env(),
             config,
         }

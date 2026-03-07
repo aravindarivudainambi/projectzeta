@@ -53,6 +53,14 @@ pub async fn build_router() -> Result<Router> {
             post(routes::connectors::notion_oauth_callback),
         )
         .route(
+            "/connectors/google/oauth-url",
+            get(routes::connectors::google_oauth_start),
+        )
+        .route(
+            "/connectors/google/callback",
+            post(routes::connectors::google_oauth_callback),
+        )
+        .route(
             "/me",
             get(me_handler).route_layer(middleware::from_fn(auth::auth_middleware)),
         )

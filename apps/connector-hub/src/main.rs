@@ -50,6 +50,15 @@ async fn main() -> Result<()> {
             "/oauth/notion/callback",
             post(oauth::flow::notion_oauth_callback),
         )
+        .route("/google/execute", post(routes::execute_google_tool))
+        .route(
+            "/oauth/google/start",
+            get(oauth::flow::start_google_oauth),
+        )
+        .route(
+            "/oauth/google/callback",
+            post(oauth::flow::google_oauth_callback),
+        )
         .with_state(state);
 
     axum::serve(listener, app).await?;
