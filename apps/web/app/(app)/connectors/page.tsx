@@ -33,9 +33,7 @@ export default function ConnectorsPage() {
   };
 
   if (loading) {
-    return (
-      <main className="p-8 text-zinc-400">Loading connectors...</main>
-    );
+    return <main className="p-8 text-zinc-400">Loading connectors...</main>;
   }
 
   return (
@@ -44,9 +42,7 @@ export default function ConnectorsPage() {
       <p className="text-sm text-zinc-500 mb-8">
         Connect external services to use their tools in your agent workflows.
       </p>
-      {error && (
-        <p className="text-sm text-red-600 mb-4">{error}</p>
-      )}
+      {error && <p className="text-sm text-red-600 mb-4">{error}</p>}
       <div className="grid gap-4">
         {connectors.map((c) => (
           <div
