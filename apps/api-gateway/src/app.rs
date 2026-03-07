@@ -1,5 +1,11 @@
 use anyhow::Result;
-use axum::{extract::Extension, middleware, response::IntoResponse, routing::get, Json, Router};
+use axum::{
+    extract::Extension,
+    middleware,
+    response::IntoResponse,
+    routing::{get, post},
+    Json, Router,
+};
 use serde_json::json;
 
 use crate::{
@@ -9,11 +15,16 @@ use crate::{
 
 /// Builds the composed Axum router for the gateway surface.
 ///
-/// The gateway exposes infrastructure health checks and a protected `/me`
-/// endpoint that demonstrates request authentication context injection.
+/// The gateway exposes infrastructure health checks, agent token issuance, and
+/// a protected `/me` endpoint that demonstrates request authentication context
+/// injection.
 pub async fn build_router() -> Result<Router> {
     Ok(Router::new()
         .route("/health", get(routes::health::health_check))
+        .route(
+            "/agents/{id}/token",
+            post(routes::agents::issue_agent_token),
+        )
         .route(
             "/me",
             get(me_handler).route_layer(middleware::from_fn(auth::auth_middleware)),

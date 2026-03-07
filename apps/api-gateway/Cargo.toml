@@ -9,6 +9,7 @@ axum.workspace = true
 base64 = "0.22"
 core-types = { path = "../../libs/core-types" }
 db = { path = "../../libs/db" }
+jsonwebtoken = "9"
 serde.workspace = true
 serde_json.workspace = true
 telemetry = { path = "../../libs/telemetry" }
