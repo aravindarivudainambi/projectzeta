@@ -9,9 +9,10 @@ use anyhow::Result;
 use axum::{
     http::{header, HeaderValue, StatusCode},
     response::IntoResponse,
-    routing::get,
+    routing::{get, post},
     Router,
 };
+use sqlx::PgPool;
 use tokio::net::TcpListener;
 
 async fn health_check() -> impl IntoResponse {
@@ -30,9 +31,13 @@ async fn health_check() -> impl IntoResponse {
 async fn main() -> Result<()> {
     telemetry::init_telemetry("auth-service")?;
     let config = config::Config::from_env()?;
+    let pool = PgPool::connect(&config.database_url).await?;
 
     let listener = TcpListener::bind(("0.0.0.0", config.port)).await?;
-    let app = Router::new().route("/health", get(health_check));
+    let app = Router::new()
+        .route("/health", get(health_check))
+        .route("/auth/register", post(users::register_user))
+        .with_state(pool);
 
     axum::serve(listener, app).await?;
     Ok(())
