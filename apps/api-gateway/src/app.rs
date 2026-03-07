@@ -11,14 +11,17 @@ use serde_json::json;
 use crate::{
     middleware::auth::{self, TenantId, UserId},
     routes,
+    state::AppState,
 };
 
 /// Builds the composed Axum router for the gateway surface.
 ///
-/// The gateway exposes infrastructure health checks, agent token issuance, and
-/// a protected `/me` endpoint that demonstrates request authentication context
-/// injection.
+/// The gateway exposes infrastructure health checks, agent token issuance,
+/// run management with SSE streaming, human approval endpoints, and a
+/// protected `/me` endpoint that demonstrates request authentication.
 pub async fn build_router() -> Result<Router> {
+    let state = AppState::new();
+
     Ok(Router::new()
         .route("/health", get(routes::health::health_check))
         .route(
@@ -26,10 +29,15 @@ pub async fn build_router() -> Result<Router> {
             post(routes::agents::issue_agent_token),
         )
         .route("/agents/build", post(routes::build::build_agent))
+        .route("/runs", post(routes::runs::create_run))
+        .route("/runs/{id}/stream", get(routes::runs::stream_run))
+        .route("/runs/{id}/approve", post(routes::runs::approve_run))
+        .route("/runs/{id}/reject", post(routes::runs::reject_run))
         .route(
             "/me",
             get(me_handler).route_layer(middleware::from_fn(auth::auth_middleware)),
-        ))
+        )
+        .with_state(state))
 }
 
 /// Returns the authenticated identity extracted by auth middleware.

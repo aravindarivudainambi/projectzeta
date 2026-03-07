@@ -5,6 +5,7 @@ mod config;
 mod errors;
 mod middleware;
 mod routes;
+mod state;
 
 use anyhow::Result;
 use tokio::net::TcpListener;

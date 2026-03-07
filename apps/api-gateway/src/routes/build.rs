@@ -129,6 +129,7 @@ fn fallback_agent_config(description: &str) -> AgentConfig {
         vec![AgentStep {
             id: Uuid::new_v4(),
             name: "Process workflow request".to_string(),
+            requires_approval: false,
         }]
     } else {
         step_phrases
@@ -136,6 +137,7 @@ fn fallback_agent_config(description: &str) -> AgentConfig {
             .map(|name| AgentStep {
                 id: Uuid::new_v4(),
                 name,
+                requires_approval: false,
             })
             .collect()
     };

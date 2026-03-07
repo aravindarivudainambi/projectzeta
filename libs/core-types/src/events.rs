@@ -1,11 +1,12 @@
 use schemars::JsonSchema;
 use serde::{Deserialize, Serialize};
 use serde_json::Value;
+use uuid::Uuid;
 
 /// Enumerates the typed events that can be streamed to the frontend.
 #[derive(Debug, Clone, Serialize, Deserialize, JsonSchema)]
 pub enum AgentEvent {
-    StepStarted,
+    StepStarted { step_id: Uuid, step_name: String },
     ToolCalled { tool: String, args: Value },
     HumanApprovalRequired { action: String },
     StepCompleted { result: Value, latency_ms: u64 },

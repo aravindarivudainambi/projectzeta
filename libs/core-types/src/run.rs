@@ -28,6 +28,14 @@ pub enum RunStatus {
     Failed,
 }
 
+/// Represents the decision state of a human approval checkpoint.
+#[derive(Debug, Clone, PartialEq, Eq, Serialize, Deserialize, JsonSchema)]
+pub enum ApprovalStatus {
+    Pending,
+    Approved,
+    Rejected,
+}
+
 /// Returns a placeholder run object so API contracts can be exercised before execution logic exists.
 pub fn sample_run(agent_id: Uuid) -> AgentRun {
     AgentRun {

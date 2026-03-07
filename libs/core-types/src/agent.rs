@@ -24,6 +24,9 @@ pub enum Trigger {
 pub struct AgentStep {
     pub id: Uuid,
     pub name: String,
+    /// When true the runner must pause and wait for human approval before executing this step.
+    #[serde(default)]
+    pub requires_approval: bool,
 }
 
 /// Captures a versioned snapshot of agent behavior.
@@ -47,6 +50,7 @@ pub fn sample_agent_config() -> AgentConfig {
         steps: vec![AgentStep {
             id: Uuid::nil(),
             name: "Placeholder Step".to_string(),
+            requires_approval: false,
         }],
     }
 }
