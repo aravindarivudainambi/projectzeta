@@ -1,13 +1,15 @@
 use schemars::JsonSchema;
 use serde::{Deserialize, Serialize};
+use serde_json::Value;
 
 /// Enumerates the typed events that can be streamed to the frontend.
 #[derive(Debug, Clone, Serialize, Deserialize, JsonSchema)]
 pub enum AgentEvent {
-    StepStarted { label: String },
-    ToolCalled { tool_name: String },
-    HumanApprovalRequired { reason: String },
-    Finished { status: String },
+    StepStarted,
+    ToolCalled { tool: String, args: Value },
+    HumanApprovalRequired { action: String },
+    StepCompleted { result: Value, latency_ms: u64 },
+    RunFinished { cost_usd: f64 },
 }
 
 /// Serializes a placeholder event payload for transport-layer scaffolding.
@@ -15,7 +17,5 @@ pub enum AgentEvent {
 /// Real event formatting should be centralized later, but a stable placeholder is useful
 /// while the SSE contract is still taking shape.
 pub fn placeholder_event() -> AgentEvent {
-    AgentEvent::Finished {
-        status: "placeholder".to_string(),
-    }
+    AgentEvent::RunFinished { cost_usd: 0.0 }
 }

@@ -1,5 +1,7 @@
+.PHONY: dev migrate test lint
+
 dev:
-	@echo "Start frontend and Rust services from their respective workspaces."
+	@./scripts/dev.sh
 
 migrate:
 	@echo "Run SQLx migrations once service wiring is implemented."

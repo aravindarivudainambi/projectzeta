@@ -8,6 +8,7 @@ version = "0.1.0"
 dependencies = [
  "anyhow",
  "async-channel",
+ "axum",
  "core-types",
  "llm-client",
  "mcp-sdk",
@@ -56,6 +57,7 @@ name = "auth-service"
 version = "0.1.0"
 dependencies = [
  "anyhow",
+ "axum",
  "telemetry",
  "tokio",
 ]
@@ -150,6 +152,7 @@ name = "connector-hub"
 version = "0.1.0"
 dependencies = [
  "anyhow",
+ "axum",
  "mcp-sdk",
  "secret-vault",
  "telemetry",
@@ -162,6 +165,7 @@ version = "0.1.0"
 dependencies = [
  "schemars",
  "serde",
+ "serde_json",
  "uuid",
 ]
 
@@ -497,6 +501,7 @@ name = "observability-service"
 version = "0.1.0"
 dependencies = [
  "anyhow",
+ "axum",
  "telemetry",
  "tokio",
 ]
