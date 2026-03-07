@@ -12,10 +12,7 @@ pub fn scrub_pii(input: &str) -> String {
     // Order matters: run SSN before email so that patterns embedded next to `@` are caught.
     let ssn_re = Regex::new(r"\b\d{3}-\d{2}-\d{4}\b|\b\d{9}\b").unwrap();
     let email_re = Regex::new(r"[a-zA-Z0-9._%+\-]+@[a-zA-Z0-9.\-]+\.[a-zA-Z]{2,}").unwrap();
-    let phone_re = Regex::new(
-        r"(\+?1[\s\-.]?)?\(?\d{3}\)?[\s\-.]?\d{3}[\s\-.]?\d{4}\b",
-    )
-    .unwrap();
+    let phone_re = Regex::new(r"(\+?1[\s\-.]?)?\(?\d{3}\)?[\s\-.]?\d{3}[\s\-.]?\d{4}\b").unwrap();
 
     let out = ssn_re.replace_all(input, "[REDACTED]");
     let out = email_re.replace_all(&out, "[REDACTED]");
@@ -37,14 +34,8 @@ mod tests {
             !output.contains("alice@example.com"),
             "Email should be redacted"
         );
-        assert!(
-            !output.contains("123-45-6789"),
-            "SSN should be redacted"
-        );
-        assert!(
-            !output.contains("555-867-5309"),
-            "Phone should be redacted"
-        );
+        assert!(!output.contains("123-45-6789"), "SSN should be redacted");
+        assert!(!output.contains("555-867-5309"), "Phone should be redacted");
 
         assert_eq!(
             output.matches("[REDACTED]").count(),

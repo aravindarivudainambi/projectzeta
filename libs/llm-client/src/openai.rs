@@ -37,8 +37,7 @@ impl OpenAiProvider {
             std::env::var("GITHUB_MODELS_API_KEY").context("GITHUB_MODELS_API_KEY not set")?;
         let base_url = std::env::var("GITHUB_MODELS_BASE_URL")
             .unwrap_or_else(|_| "https://models.inference.ai.azure.com".to_string());
-        let model =
-            std::env::var("GITHUB_MODELS_MODEL").unwrap_or_else(|_| "gpt-4o".to_string());
+        let model = std::env::var("GITHUB_MODELS_MODEL").unwrap_or_else(|_| "gpt-4o".to_string());
         Ok(Self::new(api_key, base_url, model))
     }
 }
@@ -183,7 +182,9 @@ mod tests {
     /// Integration test: sends "Say hello" and asserts at least one chunk received.
     #[tokio::test]
     async fn streaming_returns_at_least_one_chunk() {
-        let Some(provider) = make_provider() else { return };
+        let Some(provider) = make_provider() else {
+            return;
+        };
 
         let messages = vec![ChatMessage {
             role: "user".to_string(),
@@ -201,7 +202,9 @@ mod tests {
     /// Integration test: system prompt + user message (multi-turn).
     #[tokio::test]
     async fn streaming_with_system_prompt() {
-        let Some(provider) = make_provider() else { return };
+        let Some(provider) = make_provider() else {
+            return;
+        };
 
         let messages = vec![
             ChatMessage {
@@ -225,7 +228,9 @@ mod tests {
     /// Integration test: asks for a JSON-only response and verifies it parses.
     #[tokio::test]
     async fn streaming_json_only_response() {
-        let Some(provider) = make_provider() else { return };
+        let Some(provider) = make_provider() else {
+            return;
+        };
 
         let messages = vec![
             ChatMessage {
@@ -254,7 +259,9 @@ mod tests {
     /// Integration test: multi-turn conversation simulating a follow-up question.
     #[tokio::test]
     async fn streaming_multi_turn_conversation() {
-        let Some(provider) = make_provider() else { return };
+        let Some(provider) = make_provider() else {
+            return;
+        };
 
         let messages = vec![
             ChatMessage {
@@ -287,7 +294,9 @@ mod tests {
     #[tokio::test]
     async fn streaming_with_pii_scrubbed_prompt() {
         use crate::pii_scrubber::scrub_pii;
-        let Some(provider) = make_provider() else { return };
+        let Some(provider) = make_provider() else {
+            return;
+        };
 
         let raw = "My email is test@example.com and my SSN is 123-45-6789.";
         let scrubbed = scrub_pii(raw);

@@ -25,10 +25,7 @@ pub async fn build_router() -> Result<Router> {
             "/agents/{id}/token",
             post(routes::agents::issue_agent_token),
         )
-        .route(
-            "/agents/build",
-            post(routes::build::build_agent),
-        )
+        .route("/agents/build", post(routes::build::build_agent))
         .route(
             "/me",
             get(me_handler).route_layer(middleware::from_fn(auth::auth_middleware)),

@@ -34,7 +34,8 @@ fn main() {
             }
         }
         if let Some(title) = root.get("title").and_then(|t| t.as_str()) {
-            defs.entry(title.to_string()).or_insert_with(|| root.clone());
+            defs.entry(title.to_string())
+                .or_insert_with(|| root.clone());
         }
     }
 
