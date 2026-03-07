@@ -1,11 +1,21 @@
-use anyhow::Result;
+use axum::{
+    http::{header, HeaderValue, StatusCode},
+    response::IntoResponse,
+};
 
 /// Returns a shallow liveness response for infrastructure health checks.
-pub async fn health_check() -> Result<()> {
-    Ok(())
+///
+/// The response is intentionally static so load balancers and orchestrators can
+/// verify process availability without touching downstream dependencies.
+pub async fn health_check() -> impl IntoResponse {
+    (
+        StatusCode::OK,
+        [(header::CONTENT_TYPE, HeaderValue::from_static("application/json"))],
+        r#"{"status":"ok"}"#,
+    )
 }
 
 /// Returns a deeper readiness response once dependencies have been verified.
-pub async fn readiness_check() -> Result<()> {
+pub async fn readiness_check() {
     todo!("Probe downstream dependencies before reporting readiness.")
 }

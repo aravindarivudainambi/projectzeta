@@ -7,15 +7,17 @@ mod middleware;
 mod routes;
 
 use anyhow::Result;
+use tokio::net::TcpListener;
 
-/// Boots the API gateway runtime and prepares the router scaffold.
-///
-/// The function intentionally stops short of binding a network listener because the task is to
-/// establish layout and contracts, not production behavior.
+/// Boots the API gateway runtime, binds the public listener, and serves routes.
 #[tokio::main]
 async fn main() -> Result<()> {
-    let config = config::Config::from_env()?;
-    let _router = app::build_router(&config).await?;
     telemetry::init_telemetry("api-gateway")?;
+
+    let _config = config::Config::from_env()?;
+    let router = app::build_router().await?;
+    let listener = TcpListener::bind("0.0.0.0:8080").await?;
+
+    axum::serve(listener, router).await?;
     Ok(())
 }
