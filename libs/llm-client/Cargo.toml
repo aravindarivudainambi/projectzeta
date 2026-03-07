@@ -5,4 +5,16 @@ edition.workspace = true
 
 [dependencies]
 anyhow.workspace = true
+async-stream = "0.3"
+futures-core = "0.3"
+regex = "1"
+reqwest = { workspace = true, features = ["json", "rustls-tls", "stream"] }
 serde.workspace = true
+serde_json.workspace = true
+tokio.workspace = true
+tokio-stream.workspace = true
+
+[dev-dependencies]
+dotenvy = "0.15"
+futures-util = "0.3"
+tokio = { workspace = true, features = ["full"] }
