@@ -7,6 +7,7 @@ LOG_DIR="$ROOT_DIR/logs/dev"
 SERVICE_NAMES=()
 SERVICE_PIDS=()
 SERVICE_LOGS=()
+STARTED_INFRA=0
 
 require_cmd() {
   local cmd="$1"
@@ -61,7 +62,9 @@ cleanup() {
   done
   wait >/dev/null 2>&1 || true
 
-  docker compose down >/dev/null 2>&1 || true
+  if [[ "$STARTED_INFRA" -eq 1 ]]; then
+    docker compose down >/dev/null 2>&1 || true
+  fi
   exit "$exit_code"
 }
 
@@ -69,7 +72,6 @@ trap cleanup EXIT INT TERM
 
 require_cmd cargo
 require_cmd curl
-require_cmd docker
 require_cmd pnpm
 
 mkdir -p "$LOG_DIR"
@@ -80,8 +82,13 @@ if [[ ! -d "$ROOT_DIR/node_modules" ]]; then
   pnpm install
 fi
 
-echo "Booting shared infrastructure containers..."
-docker compose up -d postgres redis minio
+if command -v docker >/dev/null 2>&1; then
+  echo "Booting shared infrastructure containers..."
+  docker compose up -d postgres redis minio
+  STARTED_INFRA=1
+else
+  echo "Docker not found; skipping postgres/redis/minio containers."
+fi
 
 start_service "api-gateway" cargo run -p api-gateway
 start_service "agent-engine" cargo run -p agent-engine
