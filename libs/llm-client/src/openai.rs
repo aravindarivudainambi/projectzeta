@@ -136,38 +136,28 @@ impl LlmProvider for OpenAiProvider {
 #[cfg(test)]
 mod tests {
     use super::*;
+    use futures_util::StreamExt as FuturesStreamExt;
 
-    /// Integration test: sends "Say hello" through the OpenAI-compatible provider
-    /// and asserts that at least one streamed chunk is received.
-    ///
-    /// Requires `GITHUB_MODELS_API_KEY` (set via `.env` or environment).
-    #[tokio::test]
-    async fn streaming_returns_at_least_one_chunk() {
+    fn make_provider() -> Option<OpenAiProvider> {
         let _ = dotenvy::dotenv();
-
         let api_key = match std::env::var("GITHUB_MODELS_API_KEY") {
             Ok(k) if !k.is_empty() && k != "YOUR_GITHUB_MODELS_API_KEY" => k,
             _ => {
                 eprintln!("GITHUB_MODELS_API_KEY not set – skipping integration test");
-                return;
+                return None;
             }
         };
-
-        let provider = OpenAiProvider::new(
+        Some(OpenAiProvider::new(
             api_key,
             std::env::var("GITHUB_MODELS_BASE_URL")
                 .unwrap_or_else(|_| "https://models.inference.ai.azure.com".to_string()),
             "gpt-4o".to_string(),
-        );
+        ))
+    }
 
-        let messages = vec![ChatMessage {
-            role: "user".to_string(),
-            content: "Say hello".to_string(),
-        }];
-
-        let stream = provider.complete_stream(messages);
-
-        use futures_util::StreamExt as FuturesStreamExt;
+    async fn collect_stream(
+        stream: Pin<Box<dyn Stream<Item = Result<String>> + Send>>,
+    ) -> Option<String> {
         let mut stream = std::pin::pin!(stream);
         let mut chunks = Vec::new();
         while let Some(item) = FuturesStreamExt::next(&mut stream).await {
@@ -176,24 +166,167 @@ mod tests {
                 Err(e) => {
                     let msg = e.to_string();
                     if msg.contains("401") || msg.contains("unauthorized") {
-                        eprintln!(
-                            "GITHUB_MODELS_API_KEY lacks permission – skipping integration test: {msg}"
-                        );
-                        return;
+                        eprintln!("API key lacks permission – skipping: {msg}");
+                        return None;
+                    }
+                    if msg.contains("429") || msg.contains("RateLimitReached") {
+                        eprintln!("Rate-limited by GitHub Models – skipping: {msg}");
+                        return None;
                     }
                     panic!("Stream error: {}", e);
                 }
             }
         }
+        Some(chunks.join(""))
+    }
+
+    /// Integration test: sends "Say hello" and asserts at least one chunk received.
+    #[tokio::test]
+    async fn streaming_returns_at_least_one_chunk() {
+        let Some(provider) = make_provider() else { return };
+
+        let messages = vec![ChatMessage {
+            role: "user".to_string(),
+            content: "Say hello".to_string(),
+        }];
+
+        let Some(response) = collect_stream(provider.complete_stream(messages)).await else {
+            return;
+        };
+
+        assert!(!response.is_empty(), "Expected non-empty response");
+        eprintln!("[hello] Response: {response}");
+    }
+
+    /// Integration test: system prompt + user message (multi-turn).
+    #[tokio::test]
+    async fn streaming_with_system_prompt() {
+        let Some(provider) = make_provider() else { return };
+
+        let messages = vec![
+            ChatMessage {
+                role: "system".to_string(),
+                content: "You are a pirate. Respond only in pirate speak.".to_string(),
+            },
+            ChatMessage {
+                role: "user".to_string(),
+                content: "What is 2 + 2?".to_string(),
+            },
+        ];
+
+        let Some(response) = collect_stream(provider.complete_stream(messages)).await else {
+            return;
+        };
+
+        assert!(!response.is_empty(), "Expected non-empty response");
+        eprintln!("[pirate] Response: {response}");
+    }
+
+    /// Integration test: asks for a JSON-only response and verifies it parses.
+    #[tokio::test]
+    async fn streaming_json_only_response() {
+        let Some(provider) = make_provider() else { return };
+
+        let messages = vec![
+            ChatMessage {
+                role: "system".to_string(),
+                content: "Respond ONLY with valid JSON. No prose, no markdown fences.".to_string(),
+            },
+            ChatMessage {
+                role: "user".to_string(),
+                content: r#"Return a JSON object with fields "status" set to "ok" and "value" set to 42."#.to_string(),
+            },
+        ];
+
+        let Some(response) = collect_stream(provider.complete_stream(messages)).await else {
+            return;
+        };
+
+        eprintln!("[json] Response: {response}");
+        let trimmed = response.trim();
+        let parsed: serde_json::Value = serde_json::from_str(trimmed)
+            .unwrap_or_else(|e| panic!("Response was not valid JSON: {e}\nGot: {trimmed}"));
+
+        assert_eq!(parsed["status"], "ok");
+        assert_eq!(parsed["value"], 42);
+    }
+
+    /// Integration test: multi-turn conversation simulating a follow-up question.
+    #[tokio::test]
+    async fn streaming_multi_turn_conversation() {
+        let Some(provider) = make_provider() else { return };
+
+        let messages = vec![
+            ChatMessage {
+                role: "user".to_string(),
+                content: "My favourite colour is blue.".to_string(),
+            },
+            ChatMessage {
+                role: "assistant".to_string(),
+                content: "That's a great choice! Blue is a calming colour.".to_string(),
+            },
+            ChatMessage {
+                role: "user".to_string(),
+                content: "What colour did I say was my favourite? Answer in one word.".to_string(),
+            },
+        ];
+
+        let Some(response) = collect_stream(provider.complete_stream(messages)).await else {
+            return;
+        };
+
+        eprintln!("[multi-turn] Response: {response}");
+        assert!(
+            response.to_lowercase().contains("blue"),
+            "Expected the model to recall 'blue', got: {response}"
+        );
+    }
+
+    /// Integration test: PII in the prompt is scrubbed before sending.
+    /// Verifies the scrubber output is used, not the raw input.
+    #[tokio::test]
+    async fn streaming_with_pii_scrubbed_prompt() {
+        use crate::pii_scrubber::scrub_pii;
+        let Some(provider) = make_provider() else { return };
+
+        let raw = "My email is test@example.com and my SSN is 123-45-6789.";
+        let scrubbed = scrub_pii(raw);
 
         assert!(
-            !chunks.is_empty(),
-            "Expected at least one chunk from the stream"
+            !scrubbed.contains("test@example.com"),
+            "Email should have been scrubbed"
         );
-        let full_response: String = chunks.join("");
         assert!(
-            !full_response.is_empty(),
-            "Full response should be non-empty"
+            !scrubbed.contains("123-45-6789"),
+            "SSN should have been scrubbed"
+        );
+
+        let messages = vec![
+            ChatMessage {
+                role: "system".to_string(),
+                content: "Repeat the user's message back to them verbatim.".to_string(),
+            },
+            ChatMessage {
+                role: "user".to_string(),
+                content: scrubbed.clone(),
+            },
+        ];
+
+        let Some(response) = collect_stream(provider.complete_stream(messages)).await else {
+            return;
+        };
+
+        eprintln!("[pii-scrubbed] Sent: {scrubbed}");
+        eprintln!("[pii-scrubbed] Response: {response}");
+
+        // The raw PII should never appear in the echoed response.
+        assert!(
+            !response.contains("test@example.com"),
+            "Email PII leaked into response"
+        );
+        assert!(
+            !response.contains("123-45-6789"),
+            "SSN PII leaked into response"
         );
     }
 }
