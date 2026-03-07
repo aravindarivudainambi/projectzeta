@@ -10,7 +10,10 @@ use axum::{
 pub async fn health_check() -> impl IntoResponse {
     (
         StatusCode::OK,
-        [(header::CONTENT_TYPE, HeaderValue::from_static("application/json"))],
+        [(
+            header::CONTENT_TYPE,
+            HeaderValue::from_static("application/json"),
+        )],
         r#"{"status":"ok"}"#,
     )
 }

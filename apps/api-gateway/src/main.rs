@@ -14,9 +14,9 @@ use tokio::net::TcpListener;
 async fn main() -> Result<()> {
     telemetry::init_telemetry("api-gateway")?;
 
-    let _config = config::Config::from_env()?;
+    let config = config::Config::from_env()?;
     let router = app::build_router().await?;
-    let listener = TcpListener::bind("0.0.0.0:8080").await?;
+    let listener = TcpListener::bind(("0.0.0.0", config.port)).await?;
 
     axum::serve(listener, router).await?;
     Ok(())
