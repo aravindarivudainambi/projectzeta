@@ -1,0 +1,63 @@
+# ── Rust ──────────────────────────────────────────────────────────────────────
+target/
+**/*.rs.bk
+Cargo.lock.bak
+
+# ── Node / pnpm ───────────────────────────────────────────────────────────────
+node_modules/
+.pnpm-store/
+.pnpm-debug.log
+npm-debug.log*
+yarn-debug.log*
+yarn-error.log*
+
+# ── Next.js ───────────────────────────────────────────────────────────────────
+apps/web/.next/
+apps/web/out/
+apps/web/.vercel/
+
+# ── Build outputs ─────────────────────────────────────────────────────────────
+dist/
+build/
+
+# ── Environment / secrets ─────────────────────────────────────────────────────
+.env
+.env.local
+.env.*.local
+!.env.example
+
+# ── Database ──────────────────────────────────────────────────────────────────
+*.sqlite
+*.sqlite3
+*.db
+
+# ── Docker ────────────────────────────────────────────────────────────────────
+# Keep docker-compose.yml but ignore override files created locally
+docker-compose.override.yml
+
+# ── OS / editor ───────────────────────────────────────────────────────────────
+.DS_Store
+Thumbs.db
+.idea/
+.vscode/settings.json
+*.swp
+*.swo
+*~
+
+# ── Telemetry / logs ──────────────────────────────────────────────────────────
+*.log
+logs/
+
+# ── Testing ───────────────────────────────────────────────────────────────────
+coverage/
+lcov.info
+*.profraw
+*.profdata
+
+# ── TypeScript ────────────────────────────────────────────────────────────────
+*.tsbuildinfo
+packages/schema-types/src/index.ts.generated.*
+
+# ── Misc ──────────────────────────────────────────────────────────────────────
+.turbo/
+.cache/

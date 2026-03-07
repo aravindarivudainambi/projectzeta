@@ -1,0 +1,13 @@
+[package]
+name = "agent-engine"
+version.workspace = true
+edition.workspace = true
+
+[dependencies]
+anyhow.workspace = true
+async-channel.workspace = true
+core-types = { path = "../../libs/core-types" }
+llm-client = { path = "../../libs/llm-client" }
+mcp-sdk = { path = "../../libs/mcp-sdk" }
+telemetry = { path = "../../libs/telemetry" }
+tokio.workspace = true

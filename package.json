@@ -1,0 +1,12 @@
+{
+  "name": "internal-agent-builder",
+  "private": true,
+  "packageManager": "pnpm@10.6.3",
+  "scripts": {
+    "dev": "pnpm --filter web dev",
+    "build": "pnpm -r build",
+    "lint": "pnpm -r lint",
+    "test": "pnpm -r test",
+    "gen-types": "./scripts/gen-types.sh"
+  }
+}

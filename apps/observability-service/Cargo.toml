@@ -1,0 +1,9 @@
+[package]
+name = "observability-service"
+version.workspace = true
+edition.workspace = true
+
+[dependencies]
+anyhow.workspace = true
+telemetry = { path = "../../libs/telemetry" }
+tokio.workspace = true

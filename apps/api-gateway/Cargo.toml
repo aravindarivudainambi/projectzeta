@@ -1,0 +1,12 @@
+[package]
+name = "api-gateway"
+version.workspace = true
+edition.workspace = true
+
+[dependencies]
+anyhow.workspace = true
+axum.workspace = true
+core-types = { path = "../../libs/core-types" }
+db = { path = "../../libs/db" }
+telemetry = { path = "../../libs/telemetry" }
+tokio.workspace = true

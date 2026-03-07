@@ -1,0 +1,11 @@
+[package]
+name = "connector-hub"
+version.workspace = true
+edition.workspace = true
+
+[dependencies]
+anyhow.workspace = true
+mcp-sdk = { path = "../../libs/mcp-sdk" }
+secret-vault = { path = "../../libs/secret-vault" }
+telemetry = { path = "../../libs/telemetry" }
+tokio.workspace = true
