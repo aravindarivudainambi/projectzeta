@@ -2,27 +2,33 @@
 // Re-generate with: pnpm gen-types
 
 export type AgentEvent =
-  | { StepStarted: { label: string } }
-  | { ToolCalled: { tool_name: string } }
-  | { HumanApprovalRequired: { reason: string } }
-  | { Finished: { status: string } };
-
-export type AgentStatus = "Draft" | "Active" | "Archived";
+  | { ToolCalled: { args: unknown; tool: string } }
+  | { HumanApprovalRequired: { action: string } }
+  | { StepCompleted: { latency_ms: number; result: unknown } }
+  | { RunFinished: { cost_usd: number } };
 
 export type RunStatus = "Pending" | "Running" | "WaitingForApproval" | "Succeeded" | "Failed";
 
+export type Trigger =
+  | { Schedule: { cron: string } }
+  | { Event: { event: string; source: string } };
+
 export interface AgentConfig {
-  description: string;
   id: string;
   name: string;
-  status: AgentStatus;
-  tenant_id: string;
+  steps: AgentStep[];
+  trigger: Trigger;
 }
 
 export interface AgentRun {
   agent_id: string;
   id: string;
   status: RunStatus;
+}
+
+export interface AgentStep {
+  id: string;
+  name: string;
 }
 
 export interface AgentVersion {

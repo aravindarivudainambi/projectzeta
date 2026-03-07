@@ -1,4 +1,4 @@
-use core_types::agent::{AgentConfig, AgentStatus, AgentVersion};
+use core_types::agent::{AgentConfig, AgentVersion};
 use core_types::events::AgentEvent;
 use core_types::run::{AgentRun, RunStatus, RunStep};
 use core_types::tool::{ToolCall, ToolResult, ToolSchema};
@@ -10,7 +10,6 @@ use std::collections::BTreeMap;
 fn main() {
     let root_schemas = vec![
         serde_json::to_value(schema_for!(AgentConfig)).unwrap(),
-        serde_json::to_value(schema_for!(AgentStatus)).unwrap(),
         serde_json::to_value(schema_for!(AgentVersion)).unwrap(),
         serde_json::to_value(schema_for!(AgentRun)).unwrap(),
         serde_json::to_value(schema_for!(RunStep)).unwrap(),
