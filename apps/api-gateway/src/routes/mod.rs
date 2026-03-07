@@ -1,4 +1,5 @@
 pub mod agents;
+pub mod auth;
 pub mod build;
 pub mod connectors;
 pub mod health;

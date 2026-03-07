@@ -1,4 +1,5 @@
 use std::collections::HashMap;
+use std::sync::{Arc, RwLock};
 
 use anyhow::{bail, Result};
 use uuid::Uuid;
@@ -18,9 +19,12 @@ pub struct ScopedToken {
 /// variables (for example `MOCK_TOKEN_SLACK=xoxb-...`) and keeps them in-memory.
 /// Keys are stored as `(UserId, provider)` for forward compatibility, while
 /// lookups currently ignore user scoping by design.
+///
+/// The inner map is wrapped in `Arc<RwLock>` so that OAuth callbacks can store
+/// freshly acquired tokens at runtime without restarting the service.
 #[derive(Debug, Clone, Default)]
 pub struct SecretVault {
-    tokens: HashMap<(UserId, String), String>,
+    tokens: Arc<RwLock<HashMap<(UserId, String), String>>>,
 }
 
 impl SecretVault {
@@ -42,7 +46,9 @@ impl SecretVault {
                 tokens.insert((Uuid::nil(), normalized_provider), value);
             }
         }
-        Self { tokens }
+        Self {
+            tokens: Arc::new(RwLock::new(tokens)),
+        }
     }
 
     /// Builds a vault from explicit entries.
@@ -50,7 +56,9 @@ impl SecretVault {
     /// This helper keeps unit tests deterministic while preserving the same
     /// in-memory map structure used by the environment-backed constructor.
     pub fn from_tokens(tokens: HashMap<(UserId, String), String>) -> Self {
-        Self { tokens }
+        Self {
+            tokens: Arc::new(RwLock::new(tokens)),
+        }
     }
 
     /// Returns a mock token for a provider.
@@ -61,14 +69,16 @@ impl SecretVault {
     pub fn get_token(&self, user_id: UserId, provider: &str) -> Result<String> {
         let normalized_provider = provider.to_lowercase();
 
-        if let Some(token) = self.tokens.get(&(user_id, normalized_provider.clone())) {
+        let tokens = self
+            .tokens
+            .read()
+            .map_err(|e| anyhow::anyhow!("vault lock poisoned: {e}"))?;
+
+        if let Some(token) = tokens.get(&(user_id, normalized_provider.clone())) {
             return Ok(token.clone());
         }
 
-        if let Some(token) = self
-            .tokens
-            .get(&(Uuid::nil(), normalized_provider.clone()))
-        {
+        if let Some(token) = tokens.get(&(Uuid::nil(), normalized_provider.clone())) {
             return Ok(token.clone());
         }
 
@@ -76,6 +86,23 @@ impl SecretVault {
         bail!(
             "No mock token configured for provider '{provider}'. Set {expected_env_var} in .env or environment."
         )
+    }
+
+    /// Stores (or overwrites) a token for a user+provider pair at runtime.
+    ///
+    /// Used by OAuth callbacks to persist freshly acquired access tokens
+    /// without restarting the service.
+    pub fn set_token(&self, user_id: UserId, provider: &str, value: &str) {
+        let normalized_provider = provider.to_lowercase();
+        let mut tokens = self.tokens.write().expect("vault lock poisoned");
+        tokens.insert((user_id, normalized_provider), value.to_string());
+    }
+
+    /// Returns `true` if a token exists for the given provider (any user).
+    pub fn has_token(&self, provider: &str) -> bool {
+        let normalized = provider.to_lowercase();
+        let tokens = self.tokens.read().expect("vault lock poisoned");
+        tokens.keys().any(|(_, p)| *p == normalized)
     }
 }
 
@@ -127,5 +154,24 @@ mod tests {
         let message = error.to_string();
         assert!(message.contains("provider 'notion'"));
         assert!(message.contains("MOCK_TOKEN_NOTION"));
+    }
+
+    #[test]
+    fn set_token_stores_and_retrieves_successfully() {
+        let vault = SecretVault::from_tokens(HashMap::new());
+        let user_id = Uuid::new_v4();
+
+        vault.set_token(user_id, "notion", "ntn_test_123");
+        let token = vault.get_token(user_id, "notion").expect("should exist");
+        assert_eq!(token, "ntn_test_123");
+    }
+
+    #[test]
+    fn has_token_reflects_stored_state() {
+        let vault = SecretVault::from_tokens(HashMap::new());
+        assert!(!vault.has_token("notion"));
+
+        vault.set_token(Uuid::nil(), "notion", "ntn_test");
+        assert!(vault.has_token("notion"));
     }
 }

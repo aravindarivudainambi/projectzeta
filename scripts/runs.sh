@@ -91,19 +91,23 @@ fi
 
 # Kill any stale processes from a previous run before binding ports.
 free_port 8080
+free_port 8082
 free_port 3000
 
 start_service "api-gateway" cargo run -p api-gateway
+start_service "connector-hub" cargo run -p connector-hub
 start_service "web" pnpm --filter web dev
 
 wait_for_http "http://127.0.0.1:8080/health" "api-gateway health endpoint"
+wait_for_http "http://127.0.0.1:8082/health" "connector-hub health endpoint"
 wait_for_http "http://127.0.0.1:3000" "web frontend"
 
 echo ""
-echo "Both services are running."
-echo "  Web:     http://localhost:3000"
-echo "  Gateway: http://localhost:8080/health"
-echo "  Logs:    $LOG_DIR"
+echo "All services are running."
+echo "  Web:           http://localhost:3000"
+echo "  Gateway:       http://localhost:8080/health"
+echo "  Connector Hub: http://localhost:8082/health"
+echo "  Logs:          $LOG_DIR"
 echo "Press Ctrl+C to stop."
 
 while true; do

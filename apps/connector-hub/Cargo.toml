@@ -6,6 +6,8 @@ edition.workspace = true
 [dependencies]
 anyhow.workspace = true
 axum.workspace = true
+base64 = "0.22"
+dotenvy = "0.15"
 mcp-sdk = { path = "../../libs/mcp-sdk" }
 reqwest.workspace = true
 secret-vault = { path = "../../libs/secret-vault" }
@@ -13,6 +15,7 @@ serde.workspace = true
 serde_json.workspace = true
 telemetry = { path = "../../libs/telemetry" }
 tokio.workspace = true
+urlencoding = "2"
 uuid.workspace = true
 
 [dev-dependencies]

@@ -34,11 +34,24 @@ pub async fn build_router() -> Result<Router> {
             "/agents/{id}/token",
             post(routes::agents::issue_agent_token),
         )
+        .route("/auth/dev-login", post(routes::auth::dev_login))
         .route("/agents/build", post(routes::build::build_agent))
         .route("/runs", post(routes::runs::create_run))
         .route("/runs/{id}/stream", get(routes::runs::stream_run))
         .route("/runs/{id}/approve", post(routes::runs::approve_run))
         .route("/runs/{id}/reject", post(routes::runs::reject_run))
+        .route(
+            "/connectors",
+            get(routes::connectors::list_connectors),
+        )
+        .route(
+            "/connectors/notion/oauth-url",
+            get(routes::connectors::notion_oauth_start),
+        )
+        .route(
+            "/connectors/notion/callback",
+            post(routes::connectors::notion_oauth_callback),
+        )
         .route(
             "/me",
             get(me_handler).route_layer(middleware::from_fn(auth::auth_middleware)),
