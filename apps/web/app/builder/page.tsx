@@ -1,21 +1,35 @@
 'use client';
 
-import React, { useState, useEffect } from 'react';
-import { useChat } from '@ai-sdk/react';
+import React, { useEffect, useRef, useState } from 'react';
+import Link from 'next/link';
 import { LayoutGrid } from 'lucide-react';
 
+import { CanvasPreview } from '@/components/builder/CanvasPreview';
 import { PromptInput } from '@/components/builder/PromptInput';
 import { StreamingPreview } from '@/components/builder/StreamingPreview';
 import { StatusBanners, StatusBannerType } from '@/components/builder/StatusBanners';
+<<<<<<< HEAD
 import { WorkflowCanvas } from '@/components/builder/WorkflowCanvas/WorkflowCanvas';
+=======
+import { BuilderAgentConfig, extractDetectedTools, parseAgentConfig } from '@/lib/agent-config';
+>>>>>>> 75fb783 (fixed bugs in builder_page)
 
 export default function AgentBuilderPage() {
-  const { messages, input, handleInputChange, handleSubmit, setMessages, isLoading, error } = useChat({
-    api: '/api/agent/build',
-  });
+  const abortControllerRef = useRef<AbortController | null>(null);
 
+<<<<<<< HEAD
   const [viewMode, setViewMode] = useState<'nl' | 'visual'>('nl');
 
+=======
+  const [input, setInput] = useState('');
+  const [content, setContent] = useState('');
+  const [isLoading, setIsLoading] = useState(false);
+  const [isCanvasMode, setIsCanvasMode] = useState(false);
+  const [lastPrompt, setLastPrompt] = useState('');
+  const [parsedConfig, setParsedConfig] = useState<BuilderAgentConfig | null>(null);
+  const [promptError, setPromptError] = useState(false);
+  const [isValidJson, setIsValidJson] = useState(false);
+>>>>>>> 75fb783 (fixed bugs in builder_page)
   const [bannerState, setBannerState] = useState<{
     visible: boolean;
     type: StatusBannerType;
@@ -23,103 +37,259 @@ export default function AgentBuilderPage() {
     message?: string;
   }>({ visible: false, type: 'info', title: '' });
 
-  const [promptError, setPromptError] = useState(false);
-  const [isValidJson, setIsValidJson] = useState(false);
-
-  // The latest stream content arrives in the last message if role is assistant
-  const latestMessage = messages.length > 0 ? messages[messages.length - 1] : null;
-  const content = latestMessage?.role === 'assistant' ? latestMessage.content : '';
-
-  // Handle stream timeout scenario (10s)
   useEffect(() => {
-    let timeoutId: NodeJS.Timeout;
-    if (isLoading && !content) {
-      timeoutId = setTimeout(() => {
-        setBannerState({
-          visible: true,
-          type: 'timeout',
-          title: 'Taking longer than usual...',
-          message: 'The LLM API is responding slowly.',
-        });
-      }, 5000);
-    } else if (content || !isLoading) {
-      setBannerState(prev => prev.type === 'timeout' ? { ...prev, visible: false } : prev);
+    if (!isLoading) {
+      return;
     }
-    return () => clearTimeout(timeoutId);
-  }, [isLoading, content]);
 
-  // Handle schema validation and error handling after completion
+    const timeoutId = window.setTimeout(() => {
+      setBannerState({
+        visible: true,
+        type: 'timeout',
+        title: 'Taking longer than usual...',
+        message: 'The agent is still being generated. You can keep waiting or cancel the stream.',
+      });
+    }, 5000);
+
+    return () => window.clearTimeout(timeoutId);
+  }, [isLoading]);
+
   useEffect(() => {
-    if (!isLoading && content) {
-      try {
-        const parsed = JSON.parse(content);
-        setIsValidJson(true);
-        setBannerState({ visible: false, type: 'info', title: '' }); // Clear errors
-        
-        // Check for tools
-        const hasTools = ('steps' in parsed && Array.isArray(parsed.steps) && parsed.steps.length > 0) || content.toLowerCase().includes('github') || content.toLowerCase().includes('slack');
-        
-        if (!hasTools) {
+    if (!content) {
+      setParsedConfig(null);
+      setIsValidJson(false);
+      return;
+    }
+
+    const result = parseAgentConfig(content);
+
+    if (result.success) {
+      setParsedConfig(result.data);
+      setIsValidJson(true);
+
+      if (!isLoading) {
+        const detectedTools = extractDetectedTools(result.data);
+
+        if (detectedTools.length === 0) {
           setBannerState({
             visible: true,
             type: 'warning',
             title: 'No integrations detected',
             message: 'Is your workflow missing a tool?',
           });
+        } else {
+          setBannerState({ visible: false, type: 'info', title: '' });
         }
-      } catch (e) {
-        setIsValidJson(false);
+      }
+    } else {
+      setParsedConfig(null);
+      setIsValidJson(false);
+
+      if (!isLoading) {
         setBannerState({
           visible: true,
           type: 'error',
           title: "Config couldn't be parsed",
-          message: "The AI returned an invalid format. Try rephrasing your prompt.",
+          message: 'Try rephrasing your prompt or editing the generated JSON before saving.',
         });
       }
-    } else if (isLoading) {
-      setIsValidJson(false);
     }
-  }, [isLoading, content]);
+  }, [content, isLoading]);
 
-  // Handle Form Submit
-  const onFormSubmit = (e?: React.FormEvent<HTMLFormElement>) => {
-    if (e) e.preventDefault();
-    if (!input.trim()) {
+  useEffect(() => {
+    return () => abortControllerRef.current?.abort();
+  }, []);
+
+  const onFormSubmit = async (promptOverride?: string) => {
+    const nextPrompt = (promptOverride ?? input).trim();
+
+    if (!nextPrompt || isLoading) {
       setPromptError(true);
-      setTimeout(() => setPromptError(false), 1000); // Reset shake animation
+      window.setTimeout(() => setPromptError(false), 1000);
       return;
     }
-    
-    // Clear previous UI state and start stream
+
+    abortControllerRef.current?.abort();
+    const abortController = new AbortController();
+    abortControllerRef.current = abortController;
+
+    setInput(nextPrompt);
+    setLastPrompt(nextPrompt);
+    setIsLoading(true);
+    setIsValidJson(false);
+    setParsedConfig(null);
+    setContent('');
     setBannerState({ visible: false, type: 'info', title: '' });
-    setMessages([]);
-    handleSubmit();
+
+    try {
+      const response = await fetch('/api/agent/build', {
+        method: 'POST',
+        headers: {
+          'Content-Type': 'application/json',
+        },
+        body: JSON.stringify({ prompt: nextPrompt }),
+        signal: abortController.signal,
+      });
+
+      if (!response.ok) {
+        throw new Error('The builder could not generate a configuration.');
+      }
+
+      if (!response.body) {
+        throw new Error('Streaming is not available for this response.');
+      }
+
+      const reader = response.body.getReader();
+      const decoder = new TextDecoder();
+      let aggregated = '';
+
+      while (true) {
+        const { done, value } = await reader.read();
+
+        if (done) {
+          aggregated += decoder.decode();
+          setContent(aggregated);
+          break;
+        }
+
+        aggregated += decoder.decode(value, { stream: true });
+        setContent(aggregated);
+      }
+    } catch (error) {
+      if ((error as Error).name === 'AbortError') {
+        setBannerState({
+          visible: true,
+          type: 'info',
+          title: 'Generation cancelled',
+          message: 'You can edit the prompt and try again.',
+        });
+      } else {
+        setBannerState({
+          visible: true,
+          type: 'error',
+          title: 'Failed to generate config',
+          message: 'Check your prompt and retry. The previous text has been preserved.',
+        });
+      }
+    } finally {
+      setIsLoading(false);
+    }
   };
 
   const handleManualSave = (finalContent: string) => {
-    alert("Saved Agent Configuration:\\n" + finalContent);
+    const result = parseAgentConfig(finalContent);
+
+    if (!result.success) {
+      setBannerState({
+        visible: true,
+        type: 'error',
+        title: 'Config is still invalid',
+        message: 'Fix the highlighted JSON before saving.',
+      });
+      return;
+    }
+
+    const savedAt = new Date().toISOString();
+    localStorage.setItem(
+      'agent-builder:last-config',
+      JSON.stringify({
+        prompt: lastPrompt,
+        savedAt,
+        config: result.data,
+      }),
+    );
+
+    const file = new Blob([JSON.stringify(result.data, null, 2)], { type: 'application/json' });
+    const downloadUrl = URL.createObjectURL(file);
+    const link = document.createElement('a');
+    link.href = downloadUrl;
+    link.download = `${result.data.id}.json`;
+    link.click();
+    URL.revokeObjectURL(downloadUrl);
+
+    setBannerState({
+      visible: true,
+      type: 'info',
+      title: 'Saved locally',
+      message: 'Downloaded a JSON copy and stored the latest draft in your browser.',
+    });
+  };
+
+  const handleCancelGeneration = () => {
+    abortControllerRef.current?.abort();
   };
 
   return (
+<<<<<<< HEAD
     <div className="h-screen w-full bg-zinc-50 flex flex-col items-center overflow-hidden">
       {/* Top Navigation / Header */}
       <header className="w-full h-14 border-b bg-white flex items-center justify-between px-6 shrink-0 z-50">
+=======
+    <div className="flex min-h-screen flex-col items-center bg-zinc-50">
+      <header className="z-50 flex h-14 w-full shrink-0 items-center justify-between border-b bg-white px-6">
+>>>>>>> 75fb783 (fixed bugs in builder_page)
         <div className="flex items-center gap-3">
-          <div className="w-6 h-6 bg-zinc-900 rounded-md flex items-center justify-center">
-            <LayoutGrid className="w-3 h-3 text-white" />
+          <div className="flex h-6 w-6 items-center justify-center rounded-md bg-zinc-900">
+            <LayoutGrid className="h-3 w-3 text-white" />
           </div>
-          <span className="font-semibold text-sm">Internal Agent Builder</span>
+          <span className="text-sm font-semibold">Internal Agent Builder</span>
         </div>
         <div className="flex gap-3">
-          <button className="text-xs font-medium text-zinc-500 hover:text-zinc-900 transition-colors">Documentation</button>
+          <Link href="/" className="text-xs font-medium text-zinc-500 transition-colors hover:text-zinc-900">
+            Home
+          </Link>
         </div>
       </header>
 
+<<<<<<< HEAD
       {/* Main Workspace */}
       <main className="flex-1 w-full flex flex-col lg:flex-row overflow-hidden max-w-[1600px] mx-auto min-w-[1280px]">
         {viewMode === 'visual' ? (
           <div className="w-full h-full flex-1 relative">
             <WorkflowCanvas onReturn={() => setViewMode('nl')} />
+=======
+      <main className="mx-auto flex min-w-[1280px] max-w-[1600px] flex-1 w-full flex-col overflow-hidden lg:flex-row">
+        <section className="flex flex-1 flex-col overflow-y-auto p-8 lg:p-12">
+          <div className="mx-auto flex w-full max-w-2xl flex-col pt-[10vh]">
+            <h1 className="mb-2 text-3xl font-semibold tracking-tight text-zinc-900">Create a new Agent</h1>
+            <p className="mb-10 text-sm text-zinc-500">
+              Describe your workflow in plain English. We&apos;ll automatically wire the integrations and logic.
+            </p>
+
+            <div className="z-20 mb-6">
+              <StatusBanners
+                {...bannerState}
+                action={bannerState.type === 'timeout'
+                  ? {
+                      label: 'Cancel',
+                      onClick: handleCancelGeneration,
+                    }
+                  : bannerState.type === 'error'
+                    ? {
+                        label: 'Retry',
+                        onClick: () => {
+                          void onFormSubmit(lastPrompt || input);
+                        },
+                      }
+                    : undefined}
+              />
+            </div>
+
+            <form
+              onSubmit={(event) => {
+                event.preventDefault();
+                void onFormSubmit();
+              }}
+            >
+              <PromptInput
+                value={input}
+                onChange={setInput}
+                onSubmit={onFormSubmit}
+                isStreaming={isLoading}
+                hasError={promptError}
+              />
+            </form>
+>>>>>>> 75fb783 (fixed bugs in builder_page)
           </div>
         ) : (
           <>
@@ -133,6 +303,7 @@ export default function AgentBuilderPage() {
                   Describe your workflow in plain English. We'll automatically wire the integrations and logic.
                 </p>
 
+<<<<<<< HEAD
                 {/* Error / Status Displays */}
                 <div className="mb-6 z-20">
                   <StatusBanners
@@ -179,6 +350,32 @@ export default function AgentBuilderPage() {
             </section>
           </>
         )}
+=======
+        <section className="relative flex w-full shrink-0 items-center justify-center border-l bg-zinc-100 p-6 shadow-inner lg:w-[45%] xl:w-[50%]">
+          <div className="absolute right-6 top-6 z-20">
+            <button
+              type="button"
+              onClick={() => setIsCanvasMode((current) => !current)}
+              className="flex items-center gap-2 rounded-lg border bg-white px-3 py-1.5 text-xs font-medium text-zinc-600 shadow-sm transition-colors hover:bg-zinc-50"
+            >
+              <LayoutGrid className="h-3.5 w-3.5" />
+              {isCanvasMode ? 'JSON Preview' : 'Visual Canvas'}
+            </button>
+          </div>
+          <div className="h-[85vh] w-full max-h-[900px]">
+            {isCanvasMode ? (
+              <CanvasPreview config={parsedConfig} isStreaming={isLoading} />
+            ) : (
+              <StreamingPreview
+                content={content}
+                isStreaming={isLoading}
+                isValid={isValidJson}
+                onSave={handleManualSave}
+              />
+            )}
+          </div>
+        </section>
+>>>>>>> 75fb783 (fixed bugs in builder_page)
       </main>
     </div>
   );

@@ -5,8 +5,8 @@ import { motion } from 'framer-motion';
 
 interface PromptInputProps {
   value: string;
-  onChange: (e: React.ChangeEvent<HTMLTextAreaElement>) => void;
-  onSubmit: () => void;
+  onChange: (value: string) => void;
+  onSubmit: (promptOverride?: string) => void;
   isStreaming: boolean;
   hasError?: boolean;
 }
@@ -37,17 +37,8 @@ export function PromptInput({ value, onChange, onSubmit, isStreaming, hasError }
 
   const handleExampleClick = (example: string) => {
     if (isStreaming) return;
-    // Set value directly via native setter to trigger onChange if needed, 
-    // but here we just call onChange with a synthetic event
-    const fakeEvent = {
-      target: { value: example }
-    } as React.ChangeEvent<HTMLTextAreaElement>;
-    onChange(fakeEvent);
-    
-    // Auto-submit after a tiny delay to allow state to settle
-    setTimeout(() => {
-      onSubmit();
-    }, 50);
+    onChange(example);
+    onSubmit(example);
   };
 
   return (
@@ -64,7 +55,7 @@ export function PromptInput({ value, onChange, onSubmit, isStreaming, hasError }
           <textarea
             ref={textareaRef}
             value={value}
-            onChange={onChange}
+            onChange={(event) => onChange(event.target.value)}
             onKeyDown={handleKeyDown}
             placeholder="Describe your workflow in plain English..."
             className="w-full resize-none bg-transparent px-5 py-5 pr-14 outline-none min-h-[64px] max-h-[400px] text-zinc-900 placeholder:text-zinc-400 placeholder:font-light"
@@ -73,8 +64,10 @@ export function PromptInput({ value, onChange, onSubmit, isStreaming, hasError }
           
           <div className="absolute right-3 bottom-3 flex items-center justify-center">
             <button
-              onClick={onSubmit}
+              type="button"
+              onClick={() => onSubmit()}
               disabled={!(value || '').trim() || isStreaming}
+              aria-label="Generate agent configuration"
               className={cn(
                 "p-2 rounded-xl flex items-center justify-center transition-all duration-200",
                 (value || '').trim() && !isStreaming
@@ -96,6 +89,7 @@ export function PromptInput({ value, onChange, onSubmit, isStreaming, hasError }
         {EXAMPLES.map((example) => (
           <button
             key={example}
+            type="button"
             onClick={() => handleExampleClick(example)}
             disabled={isStreaming}
             className="px-3 py-1.5 rounded-full border border-zinc-200 bg-white text-xs font-medium text-zinc-600 hover:border-zinc-300 hover:bg-zinc-50 transition-colors disabled:opacity-50 disabled:cursor-not-allowed"

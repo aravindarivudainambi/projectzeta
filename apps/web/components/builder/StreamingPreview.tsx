@@ -3,6 +3,8 @@ import { Play, CheckCircle2, Webhook, Box, Bot } from 'lucide-react';
 import { cn } from '@/lib/utils';
 import { motion, AnimatePresence } from 'framer-motion';
 
+import { extractDetectedTools, parseAgentConfig } from '@/lib/agent-config';
+
 interface StreamingPreviewProps {
   content: string;
   isStreaming: boolean;
@@ -20,17 +22,6 @@ function formatJSON(jsonString: string) {
   }
 }
 
-// Simulate detecting tools dynamically from content
-function extractTools(content: string): string[] {
-  const tools = new Set<string>();
-  if (content.toLowerCase().includes('slack')) tools.add('Slack');
-  if (content.toLowerCase().includes('github')) tools.add('GitHub');
-  if (content.toLowerCase().includes('jira')) tools.add('Jira');
-  if (content.toLowerCase().includes('notion')) tools.add('Notion');
-  if (content.toLowerCase().includes('salesforce')) tools.add('Salesforce');
-  return Array.from(tools);
-}
-
 export function StreamingPreview({ content, isStreaming, onSave, isValid }: StreamingPreviewProps) {
   const [editableContent, setEditableContent] = useState('');
   const [isEditing, setIsEditing] = useState(false);
@@ -41,7 +32,9 @@ export function StreamingPreview({ content, isStreaming, onSave, isValid }: Stre
     }
   }, [content, isEditing]);
 
-  const tools = extractTools(content);
+  const parsedContent = parseAgentConfig(editableContent);
+  const isCurrentContentValid = parsedContent.success;
+  const tools = parsedContent.success ? extractDetectedTools(parsedContent.data) : [];
 
   return (
     <div className="w-full h-full flex flex-col bg-zinc-950 text-zinc-300 rounded-xl overflow-hidden shadow-2xl border border-zinc-800 font-mono text-sm relative">
@@ -140,27 +133,28 @@ export function StreamingPreview({ content, isStreaming, onSave, isValid }: Stre
               <div className="flex items-center gap-2 text-xs">
                 {isValid ? (
                   <span className="text-emerald-400 flex items-center gap-1.5 font-sans">
-                    <CheckCircle2 className="w-4 h-4" /> Valid Schema
+                    <CheckCircle2 className="w-4 h-4" /> Valid Config
                   </span>
                 ) : (
                   <span className="text-red-400 flex items-center gap-1.5 font-sans">
-                    <CheckCircle2 className="w-4 h-4 opacity-50" /> Parsing Error
+                    <CheckCircle2 className="w-4 h-4 opacity-50" /> Needs Fixes
                   </span>
                 )}
               </div>
               
               <button
-                disabled={!isValid}
+                disabled={!isCurrentContentValid}
                 onClick={() => onSave?.(editableContent)}
+                aria-label="Save agent configuration"
                 className={cn(
                   "px-4 py-2 rounded-lg font-sans text-sm font-semibold transition-all flex items-center gap-2",
-                  isValid
+                  isCurrentContentValid
                     ? "bg-indigo-600 hover:bg-indigo-500 text-white shadow-lg shadow-indigo-500/20"
                     : "bg-zinc-800 text-zinc-500 cursor-not-allowed"
                 )}
               >
                 <Play className="w-4 h-4" fill="currentColor" />
-                Save &&nbsp;Deploy Agent
+                Save & Deploy Agent
               </button>
             </div>
           </motion.div>

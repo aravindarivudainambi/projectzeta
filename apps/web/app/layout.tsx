@@ -1,6 +1,11 @@
 import type { ReactNode } from "react";
 import "./globals.css";
 
+export const metadata = {
+  title: "Internal Agent Builder",
+  description: "Prompt-driven agent authoring workspace.",
+};
+
 /**
  * Renders the root document shell for the web application.
  *
@@ -10,7 +15,7 @@ import "./globals.css";
 export default function RootLayout({ children }: { children: ReactNode }) {
   return (
     <html lang="en">
-      <body>{children}</body>
+      <body className="bg-white text-zinc-950 antialiased">{children}</body>
     </html>
   );
 }
