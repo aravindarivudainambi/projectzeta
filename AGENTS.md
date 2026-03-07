@@ -36,3 +36,9 @@ This repository contains a scaffold for an internal agent builder platform. The 
 - New modules include tests or a documented reason they are still scaffolding.
 - Cross-service contracts are reflected in both Rust and TypeScript types.
 - Tenant and permission boundaries are explicit.
+
+## Environment / Secrets
+
+- **Location**: The local environment file lives at the repository root named `.env` (this file is gitignored).
+- **Purpose**: Place private API keys and service endpoints used for local development here (for example, `GITHUB_MODELS_API_KEY` and `GITHUB_MODELS_BASE_URL`).
+- **Security note**: Never commit secrets. Keep `.env` out of source control; use the tracked `.env.example` as a template for required variables.

@@ -14,3 +14,6 @@ uuid.workspace = true
 argon2 = { package = "rust-argon2", version = "3" }
 rand = "0.8"
 sqlx = { version = "0.8", features = ["runtime-tokio-rustls", "postgres", "uuid"] }
+argon2 = { package = "rust-argon2", version = "2" }
+chrono = { version = "0.4", default-features = false, features = ["clock"] }
+jsonwebtoken = "9"
