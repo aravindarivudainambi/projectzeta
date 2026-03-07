@@ -7,6 +7,9 @@ use axum::{
     Json, Router,
 };
 use serde_json::json;
+    routing::{get, post},
+    Router,
+};
 
 use crate::{
     middleware::auth::{self, TenantId, UserId},
@@ -120,4 +123,5 @@ mod tests {
 
         assert_eq!(body, json!({ "error": "unauthorized" }));
     }
+        ))
 }

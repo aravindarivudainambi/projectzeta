@@ -91,6 +91,7 @@ pub async fn issue_agent_token(
             "expires_at does not fit platform usize".to_string(),
         )
     })?;
+    let exp = now.saturating_add(expires_in as usize);
 
     let claims = AgentTokenClaims {
         agent_id,
@@ -101,6 +102,8 @@ pub async fn issue_agent_token(
     };
 
     let secret = signing_secret_from_env()?;
+    let secret = std::env::var("AGENT_TOKEN_SIGNING_SECRET")
+        .unwrap_or_else(|_| "dev-agent-token-signing-secret".to_string());
 
     let token = encode(
         &Header::new(Algorithm::HS256),
@@ -147,6 +150,9 @@ fn unix_timestamp_now() -> Result<usize, (StatusCode, String)> {
             "current timestamp does not fit platform usize".to_string(),
         )
     })
+        .as_secs() as usize;
+
+    Ok(now)
 }
 
 /// Maps internal errors into a generic HTTP 500 response shape.
@@ -196,6 +202,9 @@ mod tests {
         ENV_LOCK.get_or_init(|| Mutex::new(()))
     }
 
+    use super::*;
+    use jsonwebtoken::{decode, DecodingKey, Validation};
+
     #[test]
     fn normalize_scopes_deduplicates_and_sorts() {
         let scopes = vec![
@@ -227,6 +236,9 @@ mod tests {
     async fn issued_token_binds_to_path_agent_id() {
         let _guard = env_lock().lock().expect("env lock should not be poisoned");
         std::env::set_var("AGENT_TOKEN_SIGNING_SECRET", TEST_SIGNING_SECRET);
+    #[tokio::test]
+    async fn issued_token_binds_to_path_agent_id() {
+        std::env::set_var("AGENT_TOKEN_SIGNING_SECRET", "integration-secret");
 
         let response = issue_agent_token(
             Path("agent-a".to_string()),
@@ -250,11 +262,13 @@ mod tests {
         let decoded = decode::<AgentTokenClaims>(
             &token,
             &DecodingKey::from_secret(TEST_SIGNING_SECRET.as_bytes()),
+            &DecodingKey::from_secret("integration-secret".as_bytes()),
             &validation,
         )
         .expect("expected token to decode");
 
         assert_eq!(decoded.claims.agent_id, "agent-a");
+        assert_ne!(decoded.claims.agent_id, "agent-b");
         assert_eq!(decoded.claims.tenant_id, "tenant-1");
         assert_eq!(
             decoded.claims.scopes,
@@ -323,6 +337,7 @@ mod tests {
         };
 
         let secret = "test-secret-with-32-characters!!";
+        let secret = "test-secret";
         let token = encode(
             &Header::new(Algorithm::HS256),
             &claims,
