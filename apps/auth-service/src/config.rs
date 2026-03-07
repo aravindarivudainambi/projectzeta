@@ -1,10 +1,9 @@
-use anyhow::{Context, Result};
+use anyhow::Result;
 
 /// Represents runtime configuration for the auth service.
 #[derive(Debug, Clone)]
 pub struct Config {
     pub port: u16,
-    pub database_url: String,
     pub jwt_signing_secret: String,
 }
 
@@ -13,20 +12,16 @@ impl Config {
     ///
     /// # Environment Variables
     /// - `AUTH_SERVICE_PORT`: Optional port override. Defaults to `8083`.
-    /// - `AUTH_JWT_SIGNING_SECRET`: Required HMAC secret used to sign and verify JWTs.
+    /// - `AUTH_JWT_SIGNING_SECRET`: Optional HMAC secret used for token signing.
+    ///   If omitted, a development fallback is used.
     pub fn from_env() -> Result<Self> {
         let port = std::env::var("AUTH_SERVICE_PORT")
             .ok()
             .and_then(|value| value.parse::<u16>().ok())
             .unwrap_or(8083);
 
-        let database_url = std::env::var("DATABASE_URL").unwrap_or_else(|_| {
-            "postgres://postgres:postgres@localhost:5432/agent_builder".to_string()
-        });
-
-        Ok(Self { port, database_url })
         let jwt_signing_secret = std::env::var("AUTH_JWT_SIGNING_SECRET")
-            .context("AUTH_JWT_SIGNING_SECRET must be set for token signing")?;
+            .unwrap_or_else(|_| "dev-auth-signing-secret-change-me".to_string());
 
         Ok(Self {
             port,
