@@ -7,7 +7,7 @@ import { LiveRunViewer } from "@/components/run-viewer/LiveRunViewer";
  */
 export default function RunDetailPage() {
   return (
-    <main>
+    <main className="flex-1 w-full bg-black h-full overflow-hidden flex flex-col">
       <LiveRunViewer />
     </main>
   );
