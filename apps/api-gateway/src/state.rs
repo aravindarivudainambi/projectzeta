@@ -3,6 +3,7 @@ use std::sync::Arc;
 
 use core_types::agent::AgentStep;
 use core_types::run::{AgentRun, ApprovalStatus};
+use serde_json::Value;
 use tokio::sync::RwLock;
 use uuid::Uuid;
 
@@ -11,10 +12,13 @@ use uuid::Uuid;
 pub struct RunRecord {
     pub run: AgentRun,
     pub steps: Vec<AgentStep>,
+    /// Maps step ID to (tool_name, tool_arguments) for steps that have tool bindings.
+    pub tool_bindings: HashMap<Uuid, (String, Value)>,
 }
 
 /// In-memory record for a single approval checkpoint.
 #[derive(Debug, Clone)]
+#[allow(dead_code)]
 pub struct ApprovalRecord {
     pub id: Uuid,
     pub run_id: Uuid,
@@ -31,6 +35,8 @@ pub struct ApprovalRecord {
 pub struct AppState {
     pub runs: Arc<RwLock<HashMap<Uuid, RunRecord>>>,
     pub approvals: Arc<RwLock<HashMap<Uuid, ApprovalRecord>>>,
+    pub http_client: reqwest::Client,
+    pub mock_notion_token: Option<String>,
 }
 
 impl AppState {
@@ -38,6 +44,8 @@ impl AppState {
         Self {
             runs: Arc::new(RwLock::new(HashMap::new())),
             approvals: Arc::new(RwLock::new(HashMap::new())),
+            http_client: reqwest::Client::new(),
+            mock_notion_token: std::env::var("MOCK_TOKEN_NOTION").ok(),
         }
     }
 }

@@ -7,6 +7,7 @@ use axum::{
     Json, Router,
 };
 use serde_json::json;
+use tower_http::cors::{Any, CorsLayer};
 
 use crate::{
     middleware::auth::{self, TenantId, UserId},
@@ -21,6 +22,11 @@ use crate::{
 /// protected `/me` endpoint that demonstrates request authentication.
 pub async fn build_router() -> Result<Router> {
     let state = AppState::new();
+
+    let cors = CorsLayer::new()
+        .allow_origin(Any)
+        .allow_methods(Any)
+        .allow_headers(Any);
 
     Ok(Router::new()
         .route("/health", get(routes::health::health_check))
@@ -37,7 +43,8 @@ pub async fn build_router() -> Result<Router> {
             "/me",
             get(me_handler).route_layer(middleware::from_fn(auth::auth_middleware)),
         )
-        .with_state(state))
+        .with_state(state)
+        .layer(cors))
 }
 
 /// Returns the authenticated identity extracted by auth middleware.

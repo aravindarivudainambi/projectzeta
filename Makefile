@@ -1,7 +1,10 @@
-.PHONY: dev migrate test lint
+.PHONY: dev run migrate test lint
 
 dev:
 	@./scripts/dev.sh
+
+run:
+	@./scripts/runs.sh
 
 migrate:
 	@echo "Run SQLx migrations once service wiring is implemented."

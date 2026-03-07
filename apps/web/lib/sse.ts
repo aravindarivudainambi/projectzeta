@@ -1,14 +1,45 @@
+export type SseEventHandler<T> = (event: T) => void;
+
+export interface SseClient {
+  close: () => void;
+}
+
 /**
- * Creates a placeholder EventSource-like contract description.
+ * Opens an SSE connection to the given URL and dispatches parsed events.
  *
- * A real implementation should wrap native `EventSource` with reconnection policy,
- * typed event parsing, and lifecycle cleanup.
+ * Wraps native EventSource with JSON parsing, typed callbacks, and a
+ * close handle for cleanup in React useEffect return functions.
  */
-export function createSseClient(url: string) {
+export function createSseClient<T = unknown>(
+  url: string,
+  options: {
+    onEvent: SseEventHandler<T>;
+    onError?: (error: Event) => void;
+    onClose?: () => void;
+  },
+): SseClient {
+  const source = new EventSource(url);
+
+  source.onmessage = (event) => {
+    try {
+      const parsed = JSON.parse(event.data) as T;
+      options.onEvent(parsed);
+    } catch {
+      // Non-JSON data — ignore
+    }
+  };
+
+  source.onerror = (err) => {
+    options.onError?.(err);
+    if (source.readyState === EventSource.CLOSED) {
+      options.onClose?.();
+    }
+  };
+
   return {
-    url,
-    connect() {
-      return undefined;
+    close() {
+      source.close();
+      options.onClose?.();
     },
   };
 }

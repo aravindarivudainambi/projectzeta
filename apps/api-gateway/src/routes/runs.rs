@@ -1,3 +1,4 @@
+use std::collections::HashMap;
 use std::convert::Infallible;
 use std::time::Duration;
 
@@ -14,7 +15,7 @@ use core_types::agent::AgentStep;
 use core_types::events::AgentEvent;
 use core_types::run::{AgentRun, ApprovalStatus, RunStatus};
 use serde::{Deserialize, Serialize};
-use serde_json::json;
+use serde_json::{json, Value};
 use uuid::Uuid;
 
 use crate::errors::AppError;
@@ -37,6 +38,8 @@ pub struct StepDefinition {
     pub name: String,
     #[serde(default)]
     pub requires_approval: bool,
+    pub tool_name: Option<String>,
+    pub tool_arguments: Option<Value>,
 }
 
 /// Response returned after a run is created.
@@ -61,13 +64,21 @@ pub async fn create_run(
     }
 
     let run_id = Uuid::new_v4();
+    let mut tool_bindings = HashMap::new();
     let steps: Vec<AgentStep> = payload
         .steps
         .into_iter()
-        .map(|s| AgentStep {
-            id: Uuid::new_v4(),
-            name: s.name,
-            requires_approval: s.requires_approval,
+        .map(|s| {
+            let step = AgentStep {
+                id: Uuid::new_v4(),
+                name: s.name,
+                requires_approval: s.requires_approval,
+            };
+            if let Some(tool_name) = s.tool_name {
+                let args = s.tool_arguments.unwrap_or(Value::Object(Default::default()));
+                tool_bindings.insert(step.id, (tool_name, args));
+            }
+            step
         })
         .collect();
 
@@ -78,6 +89,7 @@ pub async fn create_run(
             status: RunStatus::Pending,
         },
         steps,
+        tool_bindings,
     };
 
     {
@@ -133,9 +145,10 @@ pub async fn stream_run(
     }
 
     let steps = record.steps.clone();
+    let tool_bindings = record.tool_bindings.clone();
     let loop_state = state.clone();
     tokio::spawn(async move {
-        execute_run(run_id, steps, tx, loop_state).await;
+        execute_run(run_id, steps, tool_bindings, tx, loop_state).await;
     });
 
     let sse_stream = async_stream::stream! {
@@ -154,12 +167,14 @@ pub async fn stream_run(
 
 /// Executes an agent run step-by-step, sending events through the channel.
 ///
-/// For each step the loop emits `StepStarted`, simulates work, emits `ToolCalled`,
-/// and then `StepCompleted`. Steps tagged `requires_approval` pause execution until
+/// For each step the loop emits `StepStarted`, dispatches the bound tool (or
+/// simulates work if no binding exists), emits `ToolCalled`, and then
+/// `StepCompleted`. Steps tagged `requires_approval` pause execution until
 /// a human decision is recorded via the approve/reject endpoints.
 async fn execute_run(
     run_id: Uuid,
     steps: Vec<AgentStep>,
+    tool_bindings: HashMap<Uuid, (String, Value)>,
     tx: tokio::sync::mpsc::Sender<AgentEvent>,
     state: AppState,
 ) {
@@ -172,18 +187,47 @@ async fn execute_run(
             })
             .await;
 
-        // Simulate tool execution.
-        tokio::time::sleep(Duration::from_secs(1)).await;
+        // Dispatch real tool or simulate.
+        let step_result = if let Some((tool_name, tool_args)) = tool_bindings.get(&step.id) {
+            let token = state.mock_notion_token.clone().unwrap_or_default();
 
-        let _ = tx
-            .send(AgentEvent::ToolCalled {
-                tool: format!(
-                    "tool_for_{}",
-                    step.name.to_lowercase().replace(' ', "_")
-                ),
-                args: json!({ "step": step.name }),
-            })
+            // Emit ToolCalled before execution so the UI shows the invocation.
+            let _ = tx
+                .send(AgentEvent::ToolCalled {
+                    tool: tool_name.clone(),
+                    args: tool_args.clone(),
+                })
+                .await;
+
+            let result = crate::tool_dispatch::dispatch_tool_call(
+                &state.http_client,
+                tool_name,
+                tool_args,
+                &token,
+            )
             .await;
+
+            json!({
+                "tool": result.tool_name,
+                "success": result.success,
+                "output": result.output_json,
+            })
+        } else {
+            // No tool binding — simulate as before.
+            tokio::time::sleep(Duration::from_secs(1)).await;
+
+            let _ = tx
+                .send(AgentEvent::ToolCalled {
+                    tool: format!(
+                        "tool_for_{}",
+                        step.name.to_lowercase().replace(' ', "_")
+                    ),
+                    args: json!({ "step": step.name }),
+                })
+                .await;
+
+            json!({ "output": format!("{} completed successfully", step.name) })
+        };
 
         // Human approval gate.
         if step.requires_approval {
@@ -255,12 +299,12 @@ async fn execute_run(
             }
         }
 
-        // Simulate step completion.
-        tokio::time::sleep(Duration::from_millis(500)).await;
+        // Emit step completion with actual result.
+        tokio::time::sleep(Duration::from_millis(100)).await;
 
         let _ = tx
             .send(AgentEvent::StepCompleted {
-                result: json!({ "output": format!("{} completed successfully", step.name) }),
+                result: step_result,
                 latency_ms: 1500,
             })
             .await;

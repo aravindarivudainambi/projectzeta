@@ -7,6 +7,10 @@ edition.workspace = true
 anyhow.workspace = true
 axum.workspace = true
 mcp-sdk = { path = "../../libs/mcp-sdk" }
+reqwest.workspace = true
 secret-vault = { path = "../../libs/secret-vault" }
+serde.workspace = true
+serde_json.workspace = true
 telemetry = { path = "../../libs/telemetry" }
 tokio.workspace = true
+uuid.workspace = true

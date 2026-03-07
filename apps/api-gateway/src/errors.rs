@@ -7,6 +7,7 @@ use serde_json::json;
 
 /// Represents high-level application errors that the gateway maps to HTTP responses.
 #[derive(Debug)]
+#[allow(dead_code)]
 pub enum AppError {
     Unauthorized,
     RateLimited,
