@@ -10,5 +10,6 @@ axum.workspace = true
 core-types = { path = "../../libs/core-types" }
 llm-client = { path = "../../libs/llm-client" }
 mcp-sdk = { path = "../../libs/mcp-sdk" }
+serde_json.workspace = true
 telemetry = { path = "../../libs/telemetry" }
 tokio.workspace = true

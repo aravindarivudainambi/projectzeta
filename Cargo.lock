@@ -12,6 +12,7 @@ dependencies = [
  "core-types",
  "llm-client",
  "mcp-sdk",
+ "serde_json",
  "telemetry",
  "tokio",
 ]
