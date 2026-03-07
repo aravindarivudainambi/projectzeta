@@ -1,3 +1,5 @@
+import type { AgentConfig } from "@schema-types";
+
 /**
  * Renders the agents index placeholder.
  *

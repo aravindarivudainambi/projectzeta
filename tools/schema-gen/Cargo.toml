@@ -1,0 +1,13 @@
+[package]
+name = "schema-gen"
+version.workspace = true
+edition.workspace = true
+
+[[bin]]
+name = "schema-gen"
+path = "src/main.rs"
+
+[dependencies]
+core-types = { path = "../../libs/core-types" }
+schemars.workspace = true
+serde_json.workspace = true
