@@ -4,6 +4,7 @@ use anyhow::{Context, Result};
 #[derive(Debug, Clone)]
 pub struct Config {
     pub port: u16,
+    pub database_url: String,
     pub jwt_signing_secret: String,
 }
 
@@ -19,6 +20,11 @@ impl Config {
             .and_then(|value| value.parse::<u16>().ok())
             .unwrap_or(8083);
 
+        let database_url = std::env::var("DATABASE_URL").unwrap_or_else(|_| {
+            "postgres://postgres:postgres@localhost:5432/agent_builder".to_string()
+        });
+
+        Ok(Self { port, database_url })
         let jwt_signing_secret = std::env::var("AUTH_JWT_SIGNING_SECRET")
             .context("AUTH_JWT_SIGNING_SECRET must be set for token signing")?;
 
