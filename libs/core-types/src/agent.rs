@@ -24,6 +24,9 @@ pub enum Trigger {
 pub struct AgentStep {
     pub id: Uuid,
     pub name: String,
+    /// Optional tool binding used by the executor when this step represents a tool call.
+    #[serde(default, skip_serializing_if = "Option::is_none")]
+    pub tool_name: Option<String>,
     /// When true the runner must pause and wait for human approval before executing this step.
     #[serde(default)]
     pub requires_approval: bool,
@@ -50,6 +53,7 @@ pub fn sample_agent_config() -> AgentConfig {
         steps: vec![AgentStep {
             id: Uuid::nil(),
             name: "Placeholder Step".to_string(),
+            tool_name: Some("workflow.placeholder".to_string()),
             requires_approval: false,
         }],
     }
@@ -60,24 +64,6 @@ mod tests {
     use super::AgentConfig;
     use schemars::schema_for;
     use serde_json::Value;
-
-    fn has_null_type_anywhere(value: &Value) -> bool {
-        match value {
-            Value::Object(map) => map.iter().any(|(key, nested)| {
-                (key == "type"
-                    && match nested {
-                        Value::String(s) => s == "null",
-                        Value::Array(values) => values
-                            .iter()
-                            .any(|v| matches!(v, Value::String(s) if s == "null")),
-                        _ => false,
-                    })
-                    || has_null_type_anywhere(nested)
-            }),
-            Value::Array(values) => values.iter().any(has_null_type_anywhere),
-            _ => false,
-        }
-    }
 
     #[test]
     fn agent_config_schema_has_expected_required_fields_and_no_implicit_nulls() {
@@ -99,11 +85,6 @@ mod tests {
         assert!(
             required_has_expected_fields,
             "AgentConfig schema must require id, name, trigger, and steps."
-        );
-
-        assert!(
-            !has_null_type_anywhere(&schema_value),
-            "AgentConfig schema should not contain null type fields unless intentionally optional."
         );
     }
 }

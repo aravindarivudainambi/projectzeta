@@ -8,6 +8,7 @@ anyhow.workspace = true
 async-stream = "0.3"
 axum.workspace = true
 base64 = "0.22"
+chrono = { version = "0.4", features = ["serde"] }
 core-types = { path = "../../libs/core-types" }
 db = { path = "../../libs/db" }
 futures-util = "0.3"

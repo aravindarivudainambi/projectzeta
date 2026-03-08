@@ -2,6 +2,7 @@ use anyhow::{bail, Context, Result};
 use reqwest::Client;
 use secret_vault::SecretVault;
 use serde::{Deserialize, Serialize};
+use serde_json::Value;
 use uuid::Uuid;
 
 // ---------------------------------------------------------------------------
@@ -774,6 +775,36 @@ impl GoogleWorkspaceClient {
         parse_google_response(resp, "get_drive_file").await
     }
 
+    /// Sends an email via the Gmail API.
+    ///
+    /// Constructs an RFC 2822 message, base64url-encodes it, and sends via
+    /// `POST /gmail/v1/users/me/messages/send`.
+    pub async fn send_gmail_message(
+        &self,
+        token: &str,
+        to: &str,
+        subject: &str,
+        body_text: &str,
+    ) -> Result<Value> {
+        let raw_message = format!(
+            "To: {to}\r\nSubject: {subject}\r\nContent-Type: text/plain; charset=utf-8\r\n\r\n{body_text}"
+        );
+        let encoded = base64url_encode(raw_message.as_bytes());
+        let url = format!("{GMAIL_BASE}/users/me/messages/send");
+        let payload = serde_json::json!({ "raw": encoded });
+
+        let resp = self
+            .http
+            .post(&url)
+            .bearer_auth(token)
+            .json(&payload)
+            .send()
+            .await
+            .context("google: send_gmail_message request failed")?;
+
+        parse_google_response(resp, "send_gmail_message").await
+    }
+
     /// Searches files in Google Drive using Drive's query syntax.
     ///
     /// Supports operators like `name contains 'report'`,
@@ -831,21 +862,28 @@ impl GoogleWorkspaceClient {
 
         let status = resp.status();
         let body = resp.text().await.context("failed to read export response body")?;
-        if status.is_success() {
-            Ok(body)
-        } else {
+        if !status.is_success() {
             bail!(
                 "Google API error (export_drive_file, HTTP {}): {}",
                 status.as_u16(),
                 body
-            )
+            );
         }
+
+        Ok(body)
     }
 }
 
 // ---------------------------------------------------------------------------
 // URL path encoding helper
 // ---------------------------------------------------------------------------
+
+/// Base64url-encodes bytes without padding, as required by the Gmail API
+/// for the `raw` field of `messages.send`.
+fn base64url_encode(input: &[u8]) -> String {
+    use base64::{engine::general_purpose::URL_SAFE_NO_PAD, Engine as _};
+    URL_SAFE_NO_PAD.encode(input)
+}
 
 /// Percent-encodes a URL path segment.
 ///

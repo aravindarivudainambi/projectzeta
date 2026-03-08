@@ -18,16 +18,19 @@ export function CostTicker({ cost }: CostTickerProps) {
       controls.start({
         y: [0, -5, 0],
         color: ["#10b981", "#ffffff"],
-        transition: { duration: 0.3 }
+        transition: { duration: 0.3 },
       });
       setDisplayCost(cost);
     }
   }, [cost, displayCost, controls]);
 
   return (
-    <div className="flex items-center gap-2 bg-slate-900 border border-slate-800 rounded-md px-3 py-2 text-sm font-mono shadow-inner">
+    <div className="flex items-center gap-2 rounded-md border border-zinc-200 bg-white px-3 py-2 text-sm font-mono shadow-sm">
       <DollarSign className="w-4 h-4 text-emerald-500" />
-      <motion.span animate={controls} className="text-slate-100 font-semibold tracking-wider">
+      <motion.span
+        animate={controls}
+        className="font-semibold tracking-wider text-zinc-900"
+      >
         {displayCost.toFixed(4)}
       </motion.span>
     </div>

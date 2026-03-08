@@ -141,9 +141,9 @@ apps/connector-hub/
     │   └── store.rs               # Encrypted credential storage + JIT lookup
     │
     └── adapters/                  # Per-tool adapters where MCP isn't available yet
-        ├── slack.rs
+        ├── notion.rs
         ├── google_workspace.rs
-        └── salesforce.rs
+        └── mod.rs
 ```
 
 ```

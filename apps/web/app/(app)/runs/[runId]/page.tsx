@@ -14,7 +14,7 @@ export default async function RunDetailPage({ params }: RunDetailPageProps) {
   const { runId } = await params;
 
   return (
-    <main className="flex-1 w-full bg-black h-full overflow-hidden flex flex-col">
+    <main className="flex h-full w-full flex-1 flex-col overflow-hidden bg-zinc-50">
       <LiveRunViewer runId={runId} />
     </main>
   );

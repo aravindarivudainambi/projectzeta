@@ -2,14 +2,18 @@
 // Re-generate with: pnpm gen-types
 
 export type AgentEvent =
+  | { StepStarted: { step_id: string; step_name: string } }
   | { ToolCalled: { args: unknown; tool: string } }
   | { HumanApprovalRequired: { action: string } }
   | { StepCompleted: { latency_ms: number; result: unknown } }
   | { RunFinished: { cost_usd: number } };
 
+export type MarketplaceTemplateComplexity = "Low" | "Medium" | "High";
+
 export type RunStatus = "Pending" | "Running" | "WaitingForApproval" | "Succeeded" | "Failed";
 
 export type Trigger =
+  | "Manual"
   | { Schedule: { cron: string } }
   | { Event: { event: string; source: string } };
 
@@ -29,6 +33,8 @@ export interface AgentRun {
 export interface AgentStep {
   id: string;
   name: string;
+  requires_approval?: boolean;
+  tool_name?: string;
 }
 
 export interface AgentVersion {
@@ -38,15 +44,56 @@ export interface AgentVersion {
   version: number;
 }
 
+export interface MarketplaceTemplate {
+  agentSteps: MarketplaceTemplateStep[];
+  complexity: MarketplaceTemplateComplexity;
+  creatorAvatar: string;
+  creatorName: string;
+  department: string;
+  description: string;
+  exampleOutput: string;
+  fullDescription: string;
+  id: string;
+  name: string;
+  requiredConnectors: string[];
+  runCount: number;
+  steps: string[];
+  toolBadges: string[];
+  trigger: Trigger;
+}
+
+export interface MarketplaceTemplateStep {
+  name: string;
+  requiresApproval?: boolean;
+  toolName?: string;
+}
+
 export interface Permission {
   action: string;
   resource: string;
+}
+
+export interface RunHistoryEntry {
+  agent_id: string;
+  finished_at?: string;
+  run_id: string;
+  started_at: string;
+  status: RunStatus;
+  step_results: StepResultEntry[];
 }
 
 export interface RunStep {
   id: string;
   label: string;
   status: RunStatus;
+}
+
+export interface StepResultEntry {
+  latency_ms: number;
+  output_summary: string;
+  step_name: string;
+  success: boolean;
+  tool_name?: string;
 }
 
 export interface Tenant {

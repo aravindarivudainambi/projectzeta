@@ -47,6 +47,12 @@ export default function AppLayout({ children }: { children: ReactNode }) {
           >
             Agents
           </Link>
+          <Link
+            href="/marketplace"
+            className="font-medium text-zinc-700 hover:text-zinc-900"
+          >
+            Marketplace
+          </Link>
         </div>
         <div className="flex items-center gap-4">
           <span className="text-xs text-zinc-400">

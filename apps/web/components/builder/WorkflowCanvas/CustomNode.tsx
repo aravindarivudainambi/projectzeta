@@ -57,7 +57,7 @@ export const StepNode = ({ data, selected }: any) => {
         </div>
         <div>
           <div className="text-sm font-bold text-blue-900">
-            {data.tool || "Tool Call"}
+            {data.tool || data.tool_name || "Tool Call"}
           </div>
           <div className="text-xs text-blue-700">
             {data.label || "Execute step"}

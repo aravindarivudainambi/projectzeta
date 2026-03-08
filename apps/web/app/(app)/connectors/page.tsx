@@ -53,7 +53,7 @@ export default function ConnectorsPage() {
     <main className="p-8 max-w-3xl mx-auto">
       <h1 className="text-2xl font-semibold mb-2">Connectors</h1>
       <p className="text-sm text-zinc-500 mb-8">
-        Connect external services to use their tools in your agent workflows.
+        Connect Google Workspace and Notion to use their tools in your agent workflows.
       </p>
       {error && <p className="text-sm text-red-600 mb-4">{error}</p>}
       <div className="grid gap-4">

@@ -1,4 +1,4 @@
-use std::convert::Infallible;
+use std::{convert::Infallible, pin::Pin};
 
 use anyhow::Result as AnyhowResult;
 use axum::{
@@ -9,7 +9,10 @@ use axum::{
     },
     Json,
 };
-use core_types::agent::{AgentConfig, AgentStep, Trigger};
+use core_types::{
+    agent::{AgentConfig, AgentStep, Trigger},
+    tool::supported_tool_schemas,
+};
 use futures_util::{Stream, StreamExt};
 use llm_client::{
     openai::OpenAiProvider,
@@ -18,8 +21,13 @@ use llm_client::{
 };
 use schemars::schema_for;
 use serde::Deserialize;
-use std::pin::Pin;
 use uuid::Uuid;
+
+#[derive(Debug, Clone, Copy, PartialEq, Eq)]
+enum ToolIntent {
+    Read,
+    Write,
+}
 
 /// Request body for the agent builder endpoint.
 #[derive(Debug, Deserialize)]
@@ -29,21 +37,21 @@ pub struct BuildRequest {
 
 /// POST /agents/build
 ///
-/// Accepts a plain-English workflow description, scrubs PII, streams the LLM
-/// response as SSE events, and validates the final JSON against the
-/// `AgentConfig` schema.
+/// Accepts a plain-English workflow description, scrubs PII, generates a valid
+/// `AgentConfig`, normalizes it into smaller tool-aware steps, and streams the
+/// final JSON back as SSE events.
 pub async fn build_agent(
     Json(payload): Json<BuildRequest>,
 ) -> Result<impl IntoResponse, (StatusCode, String)> {
-    // Scrub PII from the user description before sending to the LLM.
     let scrubbed_description = scrub_pii(&payload.description);
 
-    // Build the AgentConfig JSON Schema to inject into the system prompt.
     let schema = schema_for!(AgentConfig);
     let schema_json = serde_json::to_string_pretty(&schema).unwrap_or_else(|_| "{}".to_string());
+    let supported_tools_json = serde_json::to_string_pretty(&supported_tool_schemas())
+        .unwrap_or_else(|_| "[]".to_string());
 
     let system_prompt = format!(
-        "You are an agent config generator. Given a plain English workflow, respond ONLY with valid JSON matching this schema:\n\n{schema_json}"
+        "You are an agent config generator for an internal agent builder. Convert the user's natural-language workflow into an agentic workflow and respond ONLY with valid JSON matching this schema:\n\n{schema_json}\n\nSupported tools for this product slice:\n{supported_tools_json}\n\nRequirements:\n- Always produce a concise agent `name`.\n- Always choose the best `trigger` variant. Use `Manual` when no schedule or event source is implied.\n- Always produce an ordered `steps` array with actionable step names.\n- Set `tool_name` only when a step calls one of the supported tools above.\n- Never invent Slack, GitHub, Jira, Salesforce, Discord, or any unsupported connector tool. The only internal non-connector tool allowed is `generate_content`.\n- Use the exact snake_case tool identifiers from the supported tools catalog.\n- Prefer `generate_content` for drafting or transforming content before a Gmail or Notion write step.\n- Set `requires_approval` to true for any risky, human-review, or external-write step.\n- Break the workflow into the smallest useful sequence of 2 to 6 steps whenever possible.\n- Do not collapse data collection, reasoning, and delivery into one step. Prefer separate read -> generate_content -> write steps when drafting output is helpful.\n- If multiple supported tool actions are needed, assign each tool action its own step in execution order.\n- When the final destination is unsupported, keep the plan multi-step and end with a human handoff or approval step without inventing a tool.\n- Never assign a tool unless the user request contains enough information to satisfy that tool's required inputs. If required inputs are missing, use a non-tool planning or human handoff step instead of guessing arguments.\n- Do not add retrieval tools just because a connector is mentioned. Only add a read tool when the user explicitly asks to search, list, retrieve, inspect, review, or collect data from that connector.\n- For `google_send_gmail`, only use the tool when the request includes both a recipient and message content that can be inferred from the prompt. If either is missing, do not emit `google_send_gmail`; emit a non-tool step that asks for or waits on the missing delivery details.\n- Never output a tool name that is not present in the supported tools catalog above. If no supported tool fits, leave `tool_name` unset.\n- Do not include commentary, markdown, or code fences. Return JSON only."
     );
 
     let messages = vec![
@@ -57,97 +65,269 @@ pub async fn build_agent(
         },
     ];
 
-    // Use the remote LLM stream when credentials are available; otherwise
-    // fallback to a deterministic local stream so local development still
-    // provides a valid, token-streamed AgentConfig response.
-    let llm_stream = match OpenAiProvider::from_env() {
-        Ok(provider) => provider.complete_stream(messages),
-        Err(_) => fallback_agent_config_stream(&scrubbed_description),
+    let generated_config = match OpenAiProvider::from_env() {
+        Ok(provider) => match collect_streamed_response(provider.complete_stream(messages)).await {
+            Ok(raw_json) => parse_or_fallback_agent_config(&raw_json, &scrubbed_description),
+            Err(_) => fallback_agent_config(&scrubbed_description),
+        },
+        Err(_) => fallback_agent_config(&scrubbed_description),
     };
 
-    // We stream SSE events to the client and simultaneously accumulate the
-    // full response so we can validate it once the stream ends.
+    let response_json = serde_json::to_string(&generated_config).map_err(|error| {
+        (
+            StatusCode::INTERNAL_SERVER_ERROR,
+            format!("failed to serialize generated agent config: {error}"),
+        )
+    })?;
+
     let sse_stream = async_stream::stream! {
-        let mut llm_stream = std::pin::pin!(llm_stream);
-        let mut accumulated = String::new();
-
-        while let Some(item) = llm_stream.next().await {
-            match item {
-                Ok(chunk) => {
-                    accumulated.push_str(&chunk);
-                    yield Ok::<_, Infallible>(Event::default().data(&chunk));
-                }
-                Err(e) => {
-                    yield Ok(Event::default().event("error").data(e.to_string()));
-                    return;
-                }
-            }
+        for token in json_tokens(&response_json) {
+            yield Ok::<_, Infallible>(Event::default().data(token));
         }
 
-        // Validate the accumulated JSON against AgentConfig.
-        match serde_json::from_str::<AgentConfig>(&accumulated) {
-            Ok(_) => {
-                yield Ok(Event::default().event("done").data("valid"));
-            }
-            Err(e) => {
-                yield Ok(
-                    Event::default()
-                        .event("validation_error")
-                        .data(format!("422: invalid AgentConfig JSON: {e}")),
-                );
-            }
-        }
+        yield Ok(Event::default().event("done").data("valid"));
     };
 
     Ok(Sse::new(sse_stream).keep_alive(KeepAlive::default()))
 }
 
-/// Builds a deterministic `AgentConfig` and streams its JSON output in
-/// token-sized chunks for local/offline development.
-fn fallback_agent_config_stream(
-    description: &str,
-) -> Pin<Box<dyn Stream<Item = AnyhowResult<String>> + Send>> {
-    let config = fallback_agent_config(description);
-    let json = match serde_json::to_string(&config) {
-        Ok(serialized) => serialized,
-        Err(_) => "{}".to_string(),
-    };
+/// Collects a streamed model response into one string for validation.
+async fn collect_streamed_response(
+    mut stream: Pin<Box<dyn Stream<Item = AnyhowResult<String>> + Send>>,
+) -> Result<String, String> {
+    let mut accumulated = String::new();
 
-    Box::pin(async_stream::try_stream! {
-        for token in json_tokens(&json) {
-            yield token;
+    while let Some(item) = stream.next().await {
+        match item {
+            Ok(chunk) => accumulated.push_str(&chunk),
+            Err(error) => return Err(error.to_string()),
         }
-    })
+    }
+
+    if accumulated.trim().is_empty() {
+        return Err("model returned an empty response".to_string());
+    }
+
+    Ok(accumulated)
 }
 
+/// Parses model output into an `AgentConfig`, falling back when the JSON is
+/// invalid or too coarse.
+fn parse_or_fallback_agent_config(raw_json: &str, description: &str) -> AgentConfig {
+    match serde_json::from_str::<AgentConfig>(raw_json) {
+        Ok(config) => normalize_agent_config(config, description),
+        Err(_) => fallback_agent_config(description),
+    }
+}
+
+fn default_missing_delivery_step_name(description: &str) -> Option<String> {
+    let lower = description.to_lowercase();
+
+    if (lower.contains("gmail") || lower.contains("email"))
+        && (lower.contains("send") || lower.contains("reply") || lower.contains("draft"))
+    {
+        return Some("Request recipient and delivery details".to_string());
+    }
+
+    None
+}
 /// Constructs a best-effort `AgentConfig` from plain-English workflow text.
 fn fallback_agent_config(description: &str) -> AgentConfig {
-    let trigger = infer_trigger(description);
-    let step_phrases = infer_step_phrases(description);
-
-    let steps = if step_phrases.is_empty() {
-        vec![AgentStep {
-            id: Uuid::new_v4(),
-            name: "Process workflow request".to_string(),
-            requires_approval: false,
-        }]
-    } else {
-        step_phrases
-            .into_iter()
-            .map(|name| AgentStep {
-                id: Uuid::new_v4(),
-                name,
-                requires_approval: false,
-            })
-            .collect()
-    };
-
     AgentConfig {
         id: Uuid::new_v4(),
         name: infer_agent_name(description),
-        trigger,
-        steps,
+        trigger: infer_trigger(description),
+        steps: decompose_agent_steps(description),
     }
+}
+
+/// Normalizes model-produced configs so the builder consistently gets smaller,
+/// tool-aware steps.
+fn normalize_agent_config(mut config: AgentConfig, description: &str) -> AgentConfig {
+    if config.name.trim().is_empty() {
+        config.name = infer_agent_name(description);
+    }
+
+    config.steps = if should_expand_steps(&config) {
+        decompose_agent_steps(description)
+    } else {
+        config.steps.into_iter().map(normalize_existing_step).collect()
+    };
+
+    config
+}
+
+/// Determines whether a generated plan should be expanded into smaller steps.
+fn should_expand_steps(config: &AgentConfig) -> bool {
+    config.steps.len() <= 1
+        || config.steps.iter().any(|step| {
+            let lower = step.name.to_lowercase();
+            lower == "process workflow request"
+                || lower.contains("workflow request")
+                || lower.contains(" and ")
+                || lower.contains(',')
+        })
+}
+
+/// Normalizes step names and tool identifiers when the model already produced a
+/// sufficiently decomposed plan.
+fn normalize_existing_step(mut step: AgentStep) -> AgentStep {
+    if step.name.trim().is_empty() {
+        step.name = "Untitled Step".to_string();
+    }
+
+    if let Some(tool_name) = step.tool_name.as_deref() {
+        let normalized_tool_name = tool_name.trim();
+        step.tool_name = if normalized_tool_name.is_empty() {
+            None
+        } else {
+            Some(normalized_tool_name.to_string())
+        };
+    } else {
+        let lower = step.name.to_lowercase();
+        if lower.contains("draft")
+            || lower.contains("compose")
+            || lower.contains("summary")
+            || lower.contains("summarize")
+        {
+            step.tool_name = Some("generate_content".to_string());
+        }
+    }
+
+    step
+}
+
+fn analysis_tool_name(description: &str, write_tool: Option<&str>) -> Option<String> {
+    let lower = description.to_lowercase();
+    let looks_like_content_work = write_tool.is_some()
+        || lower.contains("summary")
+        || lower.contains("summarize")
+        || lower.contains("draft")
+        || lower.contains("compose")
+        || lower.contains("email")
+        || lower.contains("page")
+        || lower.contains("content");
+
+    if looks_like_content_work {
+        Some("generate_content".to_string())
+    } else {
+        None
+    }
+}
+
+/// Decomposes a workflow description into smaller steps that reflect available
+/// tools and a separate reasoning phase.
+fn decompose_agent_steps(description: &str) -> Vec<AgentStep> {
+    let clause_steps = build_clause_steps(description);
+    if clause_steps.len() >= 2 {
+        return ensure_reasoning_step(clause_steps, description);
+    }
+
+    build_default_steps(description)
+}
+
+/// Converts natural-language clauses into ordered candidate steps.
+fn build_clause_steps(description: &str) -> Vec<AgentStep> {
+    let mut steps = Vec::new();
+
+    for clause in infer_step_clauses(description) {
+        let next_step = AgentStep {
+            id: Uuid::new_v4(),
+            name: sentence_case(&clause),
+            tool_name: infer_tool_name(&clause),
+            requires_approval: requires_approval(&clause),
+        };
+
+        let is_duplicate = steps.last().is_some_and(|previous: &AgentStep| {
+            previous.name.eq_ignore_ascii_case(&next_step.name)
+                && previous.tool_name == next_step.tool_name
+        });
+
+        if !is_duplicate {
+            steps.push(next_step);
+        }
+    }
+
+    steps
+}
+
+/// Ensures there is a non-tool reasoning step before the first write or handoff
+/// action when the prompt otherwise maps directly from read to write.
+fn ensure_reasoning_step(mut steps: Vec<AgentStep>, description: &str) -> Vec<AgentStep> {
+    let has_reasoning_step = steps.iter().any(|step| step.tool_name.is_none());
+    let first_write_index = steps.iter().position(|step| {
+        step.tool_name.as_deref().is_some_and(is_write_tool)
+            || (step.tool_name.is_none() && contains_write_verb(&step.name))
+    });
+
+    if !has_reasoning_step {
+        if let Some(write_index) = first_write_index {
+            if write_index > 0 {
+                let write_tool = steps
+                    .get(write_index)
+                    .and_then(|step| step.tool_name.as_deref());
+                steps.insert(
+                    write_index,
+                    AgentStep {
+                        id: Uuid::new_v4(),
+                        name: default_analysis_step_name(description),
+                        tool_name: analysis_tool_name(description, write_tool),
+                        requires_approval: false,
+                    },
+                );
+            }
+        }
+    }
+
+    steps
+}
+
+/// Builds a safe default multi-step plan when the prompt has only one clause or
+/// does not clearly map to multiple explicit tool actions.
+fn build_default_steps(description: &str) -> Vec<AgentStep> {
+    let read_tool = infer_tool_name_for_mode(description, ToolIntent::Read);
+    let write_tool = infer_tool_name_for_mode(description, ToolIntent::Write);
+    let analysis_tool = analysis_tool_name(description, write_tool.as_deref());
+
+    let mut steps = vec![AgentStep {
+        id: Uuid::new_v4(),
+        name: read_tool
+            .as_deref()
+            .map(default_read_step_name)
+            .unwrap_or_else(|| "Gather required context".to_string()),
+        tool_name: read_tool,
+        requires_approval: false,
+    }];
+
+    steps.push(AgentStep {
+        id: Uuid::new_v4(),
+        name: default_analysis_step_name(description),
+        tool_name: analysis_tool,
+        requires_approval: false,
+    });
+
+    steps.push(match write_tool {
+        Some(tool_name) => AgentStep {
+            id: Uuid::new_v4(),
+            name: default_write_step_name(&tool_name),
+            tool_name: Some(tool_name),
+            requires_approval: requires_approval(description),
+        },
+        None => AgentStep {
+            id: Uuid::new_v4(),
+            name: default_missing_delivery_step_name(description).unwrap_or_else(|| {
+                if contains_write_verb(description) {
+                    "Request approval and hand off the final output".to_string()
+                } else {
+                    "Review and finalize the result".to_string()
+                }
+            }),
+            tool_name: None,
+            requires_approval: contains_write_verb(description) || requires_approval(description),
+        },
+    });
+
+    steps
 }
 
 /// Splits JSON into small, safe chunks that mimic token-by-token streaming.
@@ -174,6 +354,18 @@ fn infer_agent_name(description: &str) -> String {
 fn infer_trigger(description: &str) -> Trigger {
     let lower = description.to_lowercase();
 
+    if lower.contains("every friday") {
+        return Trigger::Schedule {
+            cron: "0 9 * * FRI".to_string(),
+        };
+    }
+
+    if lower.contains("every week") || lower.contains("weekly") {
+        return Trigger::Schedule {
+            cron: "0 9 * * MON".to_string(),
+        };
+    }
+
     if lower.contains("every day") || lower.contains("daily") {
         return Trigger::Schedule {
             cron: "0 9 * * *".to_string(),
@@ -196,19 +388,325 @@ fn infer_trigger(description: &str) -> Trigger {
     Trigger::Manual
 }
 
-/// Infers step names from comma/connector-delimited clauses.
-fn infer_step_phrases(description: &str) -> Vec<String> {
+/// Splits a workflow description into ordered execution clauses.
+fn infer_step_clauses(description: &str) -> Vec<String> {
     let normalized = description
         .replace(" and then ", ",")
         .replace(" then ", ",")
+        .replace(" after that ", ",")
         .replace(" and ", ",");
 
     normalized
         .split([',', ';'])
         .map(str::trim)
         .filter(|segment| !segment.is_empty())
-        .map(sentence_case)
+        .map(str::to_string)
         .collect()
+}
+
+/// Infers a best-effort tool binding from common workflow keywords.
+fn infer_tool_name(value: &str) -> Option<String> {
+    let lower = value.to_lowercase();
+    if lower.contains("generate content")
+        || lower.contains("draft content")
+        || lower.contains("compose")
+    {
+        return Some("generate_content".to_string());
+    }
+
+    if contains_write_verb(value) {
+        infer_tool_name_for_mode(value, ToolIntent::Write)
+            .or_else(|| infer_tool_name_for_mode(value, ToolIntent::Read))
+    } else {
+        infer_tool_name_for_mode(value, ToolIntent::Read)
+            .or_else(|| infer_tool_name_for_mode(value, ToolIntent::Write))
+    }
+}
+
+fn contains_email_address(value: &str) -> bool {
+    value
+        .split_whitespace()
+        .map(|part| {
+            part.trim_matches(|ch: char| {
+                matches!(ch, '<' | '>' | '(' | ')' | '[' | ']' | '{' | '}' | ',' | '.' | ';' | ':' | '"' | '\'')
+            })
+        })
+        .any(|part| {
+            let at_index = part.find('@');
+            matches!(at_index, Some(index) if index > 0 && index < part.len() - 1)
+                && part[at_index.unwrap_or_default() + 1..].contains('.')
+        })
+}
+
+fn contains_message_content(value: &str) -> bool {
+    let lower = value.to_lowercase();
+    [" saying ", " that says ", " with body ", " body ", " message ", " subject "]
+        .iter()
+        .any(|marker| lower.contains(marker))
+        || value.matches('"').count() >= 2
+        || value.matches('\'').count() >= 2
+}
+
+fn can_send_gmail_from_prompt(value: &str) -> bool {
+    contains_email_address(value) && contains_message_content(value)
+}
+
+/// Infers a tool name for a specific read or write intent.
+fn infer_tool_name_for_mode(value: &str, intent: ToolIntent) -> Option<String> {
+    let lower = value.to_lowercase();
+
+    if lower.contains("notion") || lower.contains("database") || lower.contains("page") {
+        if matches!(intent, ToolIntent::Write) && (lower.contains("update") || lower.contains("edit")) {
+            return Some("notion_update_page".to_string());
+        }
+
+        if matches!(intent, ToolIntent::Write)
+            && (lower.contains("append") || lower.contains("block") || lower.contains("content"))
+        {
+            return Some("notion_append_block_children".to_string());
+        }
+
+        if matches!(intent, ToolIntent::Read)
+            && (lower.contains("query") || lower.contains("filter") || lower.contains("database"))
+        {
+            return Some("notion_query_database".to_string());
+        }
+
+        if matches!(intent, ToolIntent::Read) && (lower.contains("search") || lower.contains("find")) {
+            return Some("notion_search".to_string());
+        }
+
+        if matches!(intent, ToolIntent::Read)
+            && (lower.contains("retrieve") || lower.contains("read") || lower.contains("get"))
+        {
+            return Some("notion_retrieve_page".to_string());
+        }
+
+        if matches!(intent, ToolIntent::Write) {
+            return Some("notion_create_page".to_string());
+        }
+    }
+
+    if lower.contains("google")
+        || lower.contains("gmail")
+        || lower.contains("calendar")
+        || lower.contains("drive")
+        || lower.contains("docs")
+        || lower.contains("sheets")
+        || lower.contains("email")
+        || lower.contains("meeting")
+    {
+        if lower.contains("gmail") || lower.contains("email") || lower.contains("inbox") {
+            if matches!(intent, ToolIntent::Write)
+                && (lower.contains("send") || lower.contains("reply") || lower.contains("draft"))
+            {
+                if can_send_gmail_from_prompt(value) {
+                    return Some("google_send_gmail".to_string());
+                }
+
+                return None;
+            }
+
+            if matches!(intent, ToolIntent::Read)
+                && (lower.contains("search") || lower.contains("find") || lower.contains("query"))
+            {
+                return Some("google_search_gmail".to_string());
+            }
+
+            if matches!(intent, ToolIntent::Read) {
+                let explicitly_reads_gmail = contains_read_verb(value)
+                    || lower.contains("inbox")
+                    || lower.contains("search")
+                    || lower.contains("list")
+                    || lower.contains("retrieve")
+                    || lower.contains("open")
+                    || lower.contains("review")
+                    || lower.contains("inspect");
+
+                if !explicitly_reads_gmail {
+                    return None;
+                }
+
+                if lower.contains("get") || lower.contains("retrieve") || lower.contains("open") {
+                    return Some("google_get_gmail_message".to_string());
+                }
+
+                return Some("google_list_gmail_messages".to_string());
+            }
+        }
+
+        if lower.contains("calendar") || lower.contains("meeting") || lower.contains("event") {
+            if matches!(intent, ToolIntent::Write)
+                && (lower.contains("create")
+                    || lower.contains("schedule")
+                    || lower.contains("book")
+                    || lower.contains("add"))
+            {
+                return Some("google_create_calendar_event".to_string());
+            }
+
+            if matches!(intent, ToolIntent::Read)
+                && lower.contains("event")
+                && (lower.contains("get") || lower.contains("retrieve"))
+            {
+                return Some("google_get_calendar_event".to_string());
+            }
+
+            if matches!(intent, ToolIntent::Read)
+                && lower.contains("calendar")
+                && (lower.contains("list") || lower.contains("all"))
+            {
+                return Some("google_list_calendars".to_string());
+            }
+
+            if matches!(intent, ToolIntent::Read) {
+                return Some("google_list_calendar_events".to_string());
+            }
+        }
+
+        if lower.contains("drive")
+            || lower.contains("file")
+            || lower.contains("docs")
+            || lower.contains("sheets")
+            || lower.contains("slides")
+        {
+            if matches!(intent, ToolIntent::Read) && (lower.contains("export") || lower.contains("download")) {
+                return Some("google_export_drive_file".to_string());
+            }
+
+            if matches!(intent, ToolIntent::Read)
+                && (lower.contains("get") || lower.contains("open") || lower.contains("read"))
+            {
+                return Some("google_get_drive_file".to_string());
+            }
+
+            if matches!(intent, ToolIntent::Read)
+                && (lower.contains("search") || lower.contains("find") || lower.contains("query"))
+            {
+                return Some("google_search_drive".to_string());
+            }
+
+            if matches!(intent, ToolIntent::Read) {
+                return Some("google_list_drive_files".to_string());
+            }
+        }
+    }
+
+    None
+}
+
+/// Heuristically identifies read-oriented language.
+fn contains_read_verb(value: &str) -> bool {
+    let lower = value.to_lowercase();
+    [
+        "collect",
+        "fetch",
+        "find",
+        "get",
+        "inspect",
+        "list",
+        "query",
+        "read",
+        "retrieve",
+        "review",
+        "search",
+    ]
+    .iter()
+    .any(|keyword| lower.contains(keyword))
+}
+
+/// Heuristically identifies write- or delivery-oriented language.
+fn contains_write_verb(value: &str) -> bool {
+    let lower = value.to_lowercase();
+    [
+        "add",
+        "append",
+        "book",
+        "create",
+        "draft",
+        "email",
+        "notify",
+        "post",
+        "publish",
+        "reply",
+        "schedule",
+        "send",
+        "share",
+        "update",
+        "write",
+    ]
+    .iter()
+    .any(|keyword| lower.contains(keyword))
+}
+
+/// Returns whether a supported tool mutates state or sends output externally.
+fn is_write_tool(tool_name: &str) -> bool {
+    matches!(
+        tool_name,
+        "notion_create_page"
+            | "notion_update_page"
+            | "notion_append_block_children"
+            | "google_create_calendar_event"
+            | "google_send_gmail"
+    )
+}
+
+/// Provides a readable default step name for read-oriented tools.
+fn default_read_step_name(tool_name: &str) -> String {
+    match tool_name {
+        "google_search_gmail" => "Search Gmail for relevant context".to_string(),
+        "google_list_gmail_messages" => "Collect context from Gmail".to_string(),
+        "google_get_gmail_message" => "Retrieve the relevant Gmail message".to_string(),
+        "google_list_calendar_events" => "Review upcoming calendar events".to_string(),
+        "google_get_calendar_event" => "Retrieve the relevant calendar event".to_string(),
+        "google_list_calendars" => "Inspect available Google calendars".to_string(),
+        "google_search_drive" => "Search Google Drive for source files".to_string(),
+        "google_get_drive_file" => "Retrieve the source Drive file".to_string(),
+        "google_list_drive_files" => "Collect source files from Google Drive".to_string(),
+        "google_export_drive_file" => "Export the source Drive document".to_string(),
+        "notion_query_database" => "Query Notion for source records".to_string(),
+        "notion_search" => "Search Notion for relevant context".to_string(),
+        "notion_retrieve_page" => "Retrieve the relevant Notion page".to_string(),
+        _ => format!("Use {}", sentence_case(&tool_name.replace('_', " "))),
+    }
+}
+
+/// Provides a readable default step name for write-oriented tools.
+fn default_write_step_name(tool_name: &str) -> String {
+    match tool_name {
+        "google_send_gmail" => "Send the final Gmail update".to_string(),
+        "google_create_calendar_event" => "Create the calendar event".to_string(),
+        "notion_create_page" => "Create the Notion page".to_string(),
+        "notion_update_page" => "Update the Notion page".to_string(),
+        "notion_append_block_children" => "Append the final content in Notion".to_string(),
+        _ => format!("Execute {}", sentence_case(&tool_name.replace('_', " "))),
+    }
+}
+
+/// Provides a stable reasoning step label between retrieval and execution.
+fn default_analysis_step_name(description: &str) -> String {
+    let lower = description.to_lowercase();
+
+    if lower.contains("summary") || lower.contains("summarize") || lower.contains("standup") {
+        "Draft the summary output".to_string()
+    } else if contains_write_verb(description) {
+        "Prepare the final action".to_string()
+    } else if contains_read_verb(description) {
+        "Interpret the collected context".to_string()
+    } else {
+        "Plan the execution details".to_string()
+    }
+}
+
+/// Infers whether a step likely needs human review.
+fn requires_approval(value: &str) -> bool {
+    let lower = value.to_lowercase();
+    lower.contains("approve")
+        || lower.contains("review")
+        || lower.contains("human")
+        || lower.contains("production")
+        || lower.contains("delete")
+        || lower.contains("write")
 }
 
 /// Converts a phrase into a clean, sentence-cased step label.
@@ -223,7 +721,8 @@ fn sentence_case(input: &str) -> String {
 
 #[cfg(test)]
 mod tests {
-    use super::{fallback_agent_config, json_tokens};
+    use super::{fallback_agent_config, infer_trigger, json_tokens};
+    use core_types::agent::Trigger;
 
     #[test]
     fn fallback_config_serializes_and_parses_as_agent_config() {
@@ -243,5 +742,60 @@ mod tests {
         let sample = r#"{"status":"ok"}"#;
         let reconstructed = json_tokens(sample).join("");
         assert_eq!(reconstructed, sample);
+    }
+
+    #[test]
+    fn fallback_config_expands_single_clause_requests_into_multiple_steps() {
+        let config = fallback_agent_config("Post standup to Slack every Friday");
+
+        assert!(config.steps.len() >= 3);
+        assert!(config.steps.iter().all(|step| match step.tool_name.as_deref() {
+            Some(tool_name) => !tool_name.contains("slack"),
+            None => true,
+        }));
+    }
+
+    #[test]
+    fn fallback_config_separates_supported_read_and_write_steps() {
+        let config = fallback_agent_config(
+            "Search Gmail for customer escalations and create a Notion page with the findings",
+        );
+
+        assert!(config.steps.len() >= 3);
+        assert_eq!(config.steps[0].tool_name.as_deref(), Some("google_search_gmail"));
+        assert!(config
+            .steps
+            .iter()
+            .any(|step| step.tool_name.as_deref() == Some("generate_content")));
+        assert_eq!(
+            config.steps.last().and_then(|step| step.tool_name.as_deref()),
+            Some("notion_create_page")
+        );
+    }
+
+    #[test]
+    fn fallback_config_does_not_bind_gmail_tools_when_send_prompt_lacks_recipient() {
+        let config = fallback_agent_config("Send an email that says hello Agent");
+
+        assert!(config
+            .steps
+            .iter()
+            .all(|step| step.tool_name.as_deref() != Some("google_send_gmail")));
+        assert!(config
+            .steps
+            .iter()
+            .all(|step| step.tool_name.as_deref() != Some("google_list_gmail_messages")));
+        assert_eq!(
+            config.steps.last().map(|step| step.name.as_str()),
+            Some("Request recipient and delivery details")
+        );
+    }
+
+    #[test]
+    fn infer_trigger_supports_every_friday_schedules() {
+        match infer_trigger("Post standup to Slack every Friday") {
+            Trigger::Schedule { cron } => assert_eq!(cron, "0 9 * * FRI"),
+            other => panic!("expected friday schedule trigger, got {other:?}"),
+        }
     }
 }

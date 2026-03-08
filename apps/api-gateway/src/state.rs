@@ -1,8 +1,9 @@
 use std::collections::HashMap;
 use std::sync::Arc;
 
+use core_types::agent::AgentConfig;
 use core_types::agent::AgentStep;
-use core_types::run::{AgentRun, ApprovalStatus};
+use core_types::run::{AgentRun, ApprovalStatus, RunHistoryEntry};
 use serde_json::Value;
 use tokio::sync::RwLock;
 use uuid::Uuid;
@@ -33,19 +34,25 @@ pub struct ApprovalRecord {
 /// auth-service pattern. Cloneable for injection via `Router::with_state`.
 #[derive(Clone)]
 pub struct AppState {
+    pub agents: Arc<RwLock<HashMap<Uuid, AgentConfig>>>,
     pub runs: Arc<RwLock<HashMap<Uuid, RunRecord>>>,
     pub approvals: Arc<RwLock<HashMap<Uuid, ApprovalRecord>>>,
+    pub run_history: Arc<RwLock<Vec<RunHistoryEntry>>>,
     pub http_client: reqwest::Client,
     pub mock_notion_token: Option<String>,
+    pub mock_google_token: Option<String>,
 }
 
 impl AppState {
     pub fn new() -> Self {
         Self {
+            agents: Arc::new(RwLock::new(HashMap::new())),
             runs: Arc::new(RwLock::new(HashMap::new())),
             approvals: Arc::new(RwLock::new(HashMap::new())),
+            run_history: Arc::new(RwLock::new(Vec::new())),
             http_client: reqwest::Client::new(),
             mock_notion_token: std::env::var("MOCK_TOKEN_NOTION").ok(),
+            mock_google_token: std::env::var("MOCK_TOKEN_GOOGLE_WORKSPACE").ok(),
         }
     }
 }

@@ -12,9 +12,9 @@ interface PromptInputProps {
 }
 
 const EXAMPLES = [
-  "Post standup to Slack every Friday",
-  "Summarize PRs weekly",
-  "Alert me when Notion task changes"
+  "Summarize Gmail updates into a Notion page every Friday",
+  "Create a Google Calendar event when a Notion task is approved",
+  "Search Google Drive for onboarding docs and save the summary to Notion"
 ];
 
 export function PromptInput({ value, onChange, onSubmit, isStreaming, hasError }: PromptInputProps) {

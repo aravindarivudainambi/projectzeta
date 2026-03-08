@@ -43,8 +43,8 @@
 ┌──────────────────────────────────────────────────────────┐
 │                  EXTERNAL INTEGRATIONS                   │
 │  LLM Providers │ SaaS Tools (via MCP) │ Internal APIs    │
-│  (OpenAI, Anthropic, │  (Slack, GSuite, │  (via OAuth +  │
-│   Gemini, local)     │   Jira, SF, ...)  │   token vault) │
+│  (OpenAI, Anthropic, │  (Google Workspace,│  (via OAuth +  │
+│   Gemini, local)     │   Notion)          │   token vault) │
 └──────────────────────────────────────────────────────────┘
 ```
 
@@ -207,7 +207,7 @@ const { messages, input, handleSubmit, isLoading } = useChat({
   onFinish: (msg) => triggerAgentPreview(msg.toolInvocations)
 });
 ```
-User types "Every Monday morning, pull last week's closed deals from Salesforce, summarize them, and post to #sales-wins Slack channel." The backend LLM interprets this, generates a structured agent config, and streams it back. User sees a live preview build up token by token.
+User types "Every Monday morning, summarize unread Gmail updates and save them to a Notion page." The backend LLM interprets this, generates a structured agent config, and streams it back. User sees a live preview build up token by token.
 
 **2. Workflow Canvas (Visual Mode)**
 A `reactflow`-based drag-and-drop canvas for users who prefer visual wiring. Nodes represent: Trigger → Condition → Tool Call → Human Review → Output. Serializes to the same JSON schema as the NL builder.

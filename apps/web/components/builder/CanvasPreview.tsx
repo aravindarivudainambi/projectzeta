@@ -1,4 +1,11 @@
-import { CheckCircle2, Clock3, GitBranch, PlayCircle, ShieldAlert, Webhook } from "lucide-react";
+import {
+  CheckCircle2,
+  Clock3,
+  GitBranch,
+  PlayCircle,
+  ShieldAlert,
+  Webhook,
+} from "lucide-react";
 
 import type { BuilderAgentConfig } from "@/lib/agent-config";
 import { extractDetectedTools } from "@/lib/agent-config";
@@ -9,6 +16,10 @@ interface CanvasPreviewProps {
 }
 
 function getTriggerLabel(config: BuilderAgentConfig) {
+  if (config.trigger === "Manual") {
+    return "Manual · Runs on demand";
+  }
+
   if ("Schedule" in config.trigger) {
     return `Schedule · ${config.trigger.Schedule.cron}`;
   }
@@ -24,9 +35,12 @@ export function CanvasPreview({ config, isStreaming }: CanvasPreviewProps) {
       <div className="flex h-full min-h-[480px] items-center justify-center rounded-3xl border border-dashed border-zinc-300 bg-white/70 p-10 text-center shadow-sm">
         <div className="max-w-sm space-y-3">
           <PlayCircle className="mx-auto h-10 w-10 text-zinc-400" />
-          <h3 className="text-lg font-semibold text-zinc-900">Visual workflow preview</h3>
+          <h3 className="text-lg font-semibold text-zinc-900">
+            Visual workflow preview
+          </h3>
           <p className="text-sm leading-6 text-zinc-500">
-            Generate an agent first, then switch back here to review the trigger and execution steps as a simple workflow canvas.
+            Generate an agent first, then switch back here to review the trigger
+            and execution steps as a simple workflow canvas.
           </p>
         </div>
       </div>
@@ -37,9 +51,15 @@ export function CanvasPreview({ config, isStreaming }: CanvasPreviewProps) {
     <div className="flex h-full min-h-[480px] flex-col rounded-3xl border border-zinc-200 bg-white p-6 shadow-sm">
       <div className="flex flex-wrap items-start justify-between gap-4 border-b border-zinc-200 pb-5">
         <div>
-          <p className="text-xs font-semibold uppercase tracking-[0.28em] text-indigo-500">Workflow canvas</p>
-          <h3 className="mt-2 text-2xl font-semibold text-zinc-950">{config.name}</h3>
-          <p className="mt-2 max-w-2xl text-sm leading-6 text-zinc-500">{config.summary}</p>
+          <p className="text-xs font-semibold uppercase tracking-[0.28em] text-indigo-500">
+            Workflow canvas
+          </p>
+          <h3 className="mt-2 text-2xl font-semibold text-zinc-950">
+            {config.name}
+          </h3>
+          <p className="mt-2 max-w-2xl text-sm leading-6 text-zinc-500">
+            {config.summary}
+          </p>
         </div>
         <div className="flex flex-wrap gap-2">
           {detectedTools.length > 0 ? (
@@ -72,9 +92,11 @@ export function CanvasPreview({ config, isStreaming }: CanvasPreviewProps) {
             </div>
           </div>
           <div className="mt-6 rounded-2xl border border-zinc-200 bg-white p-4 text-sm leading-6 text-zinc-600">
-            {"Schedule" in config.trigger
-              ? "This agent runs on a recurring schedule and then executes each step in order."
-              : "This agent waits for an event and starts when the source system emits the configured trigger."}
+            {config.trigger === "Manual"
+              ? "This agent runs manually when a user launches it from the dashboard."
+              : "Schedule" in config.trigger
+                ? "This agent runs on a recurring schedule and then executes each step in order."
+                : "This agent waits for an event and starts when the source system emits the configured trigger."}
           </div>
         </aside>
 
@@ -88,27 +110,37 @@ export function CanvasPreview({ config, isStreaming }: CanvasPreviewProps) {
                   <article className="w-64 rounded-3xl border border-zinc-200 bg-white p-5 shadow-sm">
                     <div className="flex items-start justify-between gap-3">
                       <div>
-                        <p className="text-xs font-semibold uppercase tracking-[0.24em] text-zinc-400">Step {index + 1}</p>
-                        <h4 className="mt-2 text-base font-semibold text-zinc-950">{step.name}</h4>
+                        <p className="text-xs font-semibold uppercase tracking-[0.24em] text-zinc-400">
+                          Step {index + 1}
+                        </p>
+                        <h4 className="mt-2 text-base font-semibold text-zinc-950">
+                          {step.name}
+                        </h4>
                       </div>
                       <span className="inline-flex items-center gap-1 rounded-full bg-emerald-50 px-2 py-1 text-[11px] font-semibold text-emerald-700">
-                        {isStreaming ? <Clock3 className="h-3.5 w-3.5" /> : <CheckCircle2 className="h-3.5 w-3.5" />}
+                        {isStreaming ? (
+                          <Clock3 className="h-3.5 w-3.5" />
+                        ) : (
+                          <CheckCircle2 className="h-3.5 w-3.5" />
+                        )}
                         {isStreaming ? "Building" : "Ready"}
                       </span>
                     </div>
 
-                    {step.tool ? (
+                    {step.tool_name ? (
                       <div className="mt-4 inline-flex items-center gap-2 rounded-full border border-indigo-200 bg-indigo-50 px-3 py-1 text-xs font-medium text-indigo-700">
                         <Webhook className="h-3.5 w-3.5" />
-                        {step.tool}
+                        {step.tool_name}
                       </div>
                     ) : null}
 
                     {step.description ? (
-                      <p className="mt-4 text-sm leading-6 text-zinc-600">{step.description}</p>
+                      <p className="mt-4 text-sm leading-6 text-zinc-600">
+                        {step.description}
+                      </p>
                     ) : null}
 
-                    {step.approvalRequired ? (
+                    {step.requires_approval ? (
                       <div className="mt-4 inline-flex items-center gap-2 rounded-full border border-amber-200 bg-amber-50 px-3 py-1 text-xs font-medium text-amber-700">
                         <ShieldAlert className="h-3.5 w-3.5" />
                         Human approval required

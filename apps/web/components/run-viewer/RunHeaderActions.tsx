@@ -23,18 +23,24 @@ export function RunHeaderActions({ runId }: RunHeaderActionsProps) {
 
   return (
     <div className="flex items-center gap-2">
-      <button 
+      <button
         onClick={handleCopy}
-        className="flex items-center gap-1.5 px-3 py-1.5 text-xs font-medium text-slate-300 bg-slate-800 hover:bg-slate-700 rounded-md border border-slate-700 transition-colors"
+        className="flex items-center gap-1.5 rounded-md border border-zinc-200 bg-white px-3 py-1.5 text-xs font-medium text-zinc-700 transition-colors hover:bg-zinc-50"
         title="Copy Run ID"
       >
-        {copied ? <Check className="w-3.5 h-3.5 text-emerald-500" /> : <Copy className="w-3.5 h-3.5" />}
-        <span className="hidden sm:inline">{copied ? "Copied" : "Copy ID"}</span>
+        {copied ? (
+          <Check className="w-3.5 h-3.5 text-emerald-500" />
+        ) : (
+          <Copy className="w-3.5 h-3.5" />
+        )}
+        <span className="hidden sm:inline">
+          {copied ? "Copied" : "Copy ID"}
+        </span>
       </button>
-      
-      <button 
+
+      <button
         onClick={handleDownload}
-        className="flex items-center gap-1.5 px-3 py-1.5 text-xs font-medium text-slate-300 bg-slate-800 hover:bg-slate-700 rounded-md border border-slate-700 transition-colors"
+        className="flex items-center gap-1.5 rounded-md border border-zinc-200 bg-white px-3 py-1.5 text-xs font-medium text-zinc-700 transition-colors hover:bg-zinc-50"
         title="Download Logs"
       >
         <Download className="w-3.5 h-3.5" />

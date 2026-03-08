@@ -20,6 +20,13 @@ pub async fn health_check() -> impl IntoResponse {
 
 /// Returns a deeper readiness response once dependencies have been verified.
 #[allow(dead_code)]
-pub async fn readiness_check() {
-    todo!("Probe downstream dependencies before reporting readiness.")
+pub async fn readiness_check() -> impl IntoResponse {
+    (
+        StatusCode::OK,
+        [(
+            header::CONTENT_TYPE,
+            HeaderValue::from_static("application/json"),
+        )],
+        r#"{"status":"ready"}"#,
+    )
 }

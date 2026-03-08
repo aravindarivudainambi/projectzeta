@@ -1,6 +1,6 @@
 use std::pin::Pin;
 
-use anyhow::Result;
+use anyhow::{bail, Result};
 use futures_core::Stream;
 
 use crate::provider::{ChatMessage, LlmProvider};
@@ -10,13 +10,18 @@ pub struct AnthropicProvider;
 
 impl LlmProvider for AnthropicProvider {
     fn generate(&self, _prompt: &str) -> Result<String> {
-        todo!("Implement the Anthropic transport, auth, and response normalization.")
+        bail!("Anthropic generation is not configured in this scaffold yet.")
     }
 
     fn complete_stream(
         &self,
-        _messages: Vec<ChatMessage>,
+        messages: Vec<ChatMessage>,
     ) -> Pin<Box<dyn Stream<Item = Result<String>> + Send>> {
-        todo!("Implement the Anthropic streaming transport.")
+        Box::pin(async_stream::stream! {
+            let _ = messages;
+            yield Err(anyhow::anyhow!(
+                "Anthropic streaming is not configured in this scaffold yet."
+            ));
+        })
     }
 }

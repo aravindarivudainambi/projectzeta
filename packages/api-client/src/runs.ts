@@ -5,7 +5,12 @@ const API_BASE =
 
 export interface CreateRunPayload {
   agent_id: string;
-  steps: Array<{ name: string; requires_approval: boolean }>;
+  steps: Array<{
+    name: string;
+    requires_approval: boolean;
+    tool_name?: string;
+    tool_arguments?: Record<string, unknown>;
+  }>;
 }
 
 export interface CreateRunResponse {

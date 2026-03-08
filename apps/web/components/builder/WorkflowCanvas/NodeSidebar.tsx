@@ -17,7 +17,7 @@ export function NodeSidebar({ selectedNode, onUpdateNode }: NodeSidebarProps) {
     );
   }
 
-  const handleChange = (field: string, value: string) => {
+  const handleChange = (field: string, value: string | boolean) => {
     onUpdateNode(selectedNode.id, { ...selectedNode.data, [field]: value });
   };
 
@@ -44,6 +44,78 @@ export function NodeSidebar({ selectedNode, onUpdateNode }: NodeSidebarProps) {
           />
         </div>
 
+        {selectedNode.type === "trigger" && (
+          <>
+            <div className="flex flex-col gap-2">
+              <label className="text-xs font-semibold text-zinc-700">
+                Trigger Type
+              </label>
+              <select
+                className="text-sm p-2 w-full rounded-md border border-zinc-200 focus:outline-none focus:ring-2 focus:ring-blue-500/20 focus:border-blue-500 transition-all bg-zinc-50 focus:bg-white"
+                value={(selectedNode.data.triggerType as string) || "manual"}
+                onChange={(e) => handleChange("triggerType", e.target.value)}
+              >
+                <option value="manual">Manual</option>
+                <option value="schedule">Schedule</option>
+                <option value="event">Event</option>
+              </select>
+            </div>
+
+            {((selectedNode.data.triggerType as string) || "manual") ===
+            "schedule" ? (
+              <div className="flex flex-col gap-2">
+                <label className="text-xs font-semibold text-zinc-700">
+                  Cron
+                </label>
+                <input
+                  type="text"
+                  className="text-sm p-2 w-full rounded-md border border-zinc-200 focus:outline-none focus:ring-2 focus:ring-blue-500/20 focus:border-blue-500 transition-all bg-zinc-50 focus:bg-white"
+                  value={(selectedNode.data.cron as string) || "0 9 * * *"}
+                  onChange={(e) => handleChange("cron", e.target.value)}
+                  placeholder="0 9 * * *"
+                />
+              </div>
+            ) : null}
+
+            {((selectedNode.data.triggerType as string) || "manual") ===
+            "event" ? (
+              <>
+                <div className="flex flex-col gap-2">
+                  <label className="text-xs font-semibold text-zinc-700">
+                    Event Source
+                  </label>
+                  <input
+                    type="text"
+                    className="text-sm p-2 w-full rounded-md border border-zinc-200 focus:outline-none focus:ring-2 focus:ring-blue-500/20 focus:border-blue-500 transition-all bg-zinc-50 focus:bg-white"
+                    value={
+                      (selectedNode.data.eventSource as string) || "workspace"
+                    }
+                    onChange={(e) =>
+                      handleChange("eventSource", e.target.value)
+                    }
+                    placeholder="google_workspace"
+                  />
+                </div>
+                <div className="flex flex-col gap-2">
+                  <label className="text-xs font-semibold text-zinc-700">
+                    Event Name
+                  </label>
+                  <input
+                    type="text"
+                    className="text-sm p-2 w-full rounded-md border border-zinc-200 focus:outline-none focus:ring-2 focus:ring-blue-500/20 focus:border-blue-500 transition-all bg-zinc-50 focus:bg-white"
+                    value={
+                      (selectedNode.data.eventName as string) ||
+                      "manual.requested"
+                    }
+                    onChange={(e) => handleChange("eventName", e.target.value)}
+                    placeholder="page.updated"
+                  />
+                </div>
+              </>
+            ) : null}
+          </>
+        )}
+
         {selectedNode.type === "step" && (
           <>
             <div className="flex flex-col gap-2 relative">
@@ -55,7 +127,7 @@ export function NodeSidebar({ selectedNode, onUpdateNode }: NodeSidebarProps) {
                 className="text-sm p-2 w-full rounded-md border border-zinc-200 focus:outline-none focus:ring-2 focus:ring-blue-500/20 focus:border-blue-500 transition-all bg-zinc-50 focus:bg-white"
                 value={(selectedNode.data.tool as string) || ""}
                 onChange={(e) => handleChange("tool", e.target.value)}
-                placeholder="E.g. slack_post_message"
+                placeholder="E.g. generate_content, google_send_gmail, or notion_create_page"
               />
               {!selectedNode.data.tool && (
                 <p className="text-[10px] text-red-500 mt-1 absolute -bottom-4">
@@ -76,6 +148,20 @@ export function NodeSidebar({ selectedNode, onUpdateNode }: NodeSidebarProps) {
             </div>
           </>
         )}
+
+        {selectedNode.type !== "trigger" && selectedNode.type !== "output" ? (
+          <label className="flex items-center justify-between rounded-xl border border-zinc-200 bg-zinc-50 px-3 py-2 text-sm text-zinc-700">
+            <span className="font-medium">Pause for approval</span>
+            <input
+              type="checkbox"
+              className="h-4 w-4 rounded border-zinc-300 text-zinc-900 focus:ring-zinc-400"
+              checked={Boolean(selectedNode.data.requires_approval)}
+              onChange={(e) =>
+                handleChange("requires_approval", e.target.checked)
+              }
+            />
+          </label>
+        ) : null}
 
         <div className="flex flex-col gap-2">
           <label className="text-xs font-semibold text-zinc-700">

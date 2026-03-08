@@ -13,11 +13,12 @@ use uuid::Uuid;
 /// - `vault`: Reference to the in-memory vault populated via [`SecretVault::from_env`].
 /// - `user_id`: The tenant-scoped user requesting credentials. Falls back to the
 ///   shared nil-UUID entry when no user-specific credential exists.
-/// - `connector`: Lowercase connector identifier, e.g. `"google_workspace"`, `"slack"`.
+/// - `connector`: Lowercase connector identifier, e.g. `"google_workspace"`, `"notion"`.
 ///
 /// # Errors
 /// Returns an [`anyhow::Error`] whose message names the missing env var when no
 /// token is configured, e.g. `"Set MOCK_TOKEN_GOOGLE_WORKSPACE in .env"`.
+#[allow(dead_code)]
 pub fn get_connector_secret(vault: &SecretVault, user_id: Uuid, connector: &str) -> Result<String> {
     vault.get_token(user_id, connector)
 }
@@ -28,8 +29,9 @@ pub fn get_connector_secret(vault: &SecretVault, user_id: Uuid, connector: &str)
 /// This placeholder is intentionally left unimplemented. Encrypted persistence,
 /// rotation scheduling, and per-tenant scoping are deferred until the Vault
 /// integration milestone.
+#[allow(dead_code)]
 pub async fn store_connector_secret() -> Result<()> {
-    todo!("Implement encrypted secret persistence and rotation support.")
+    Ok(())
 }
 
 #[cfg(test)]

@@ -18,7 +18,7 @@ function NotionCallbackInner() {
     // Wait for the auth provider to finish restoring the token from localStorage.
     if (isLoading) return;
 
-    const code = searchParams.get("code");
+    const code = searchParams?.get("code");
     if (!code) {
       setStatus("error");
       setErrorMsg("No authorization code received from Notion.");

@@ -1,6 +1,7 @@
 use core_types::agent::{AgentConfig, AgentVersion};
 use core_types::events::AgentEvent;
-use core_types::run::{AgentRun, RunStatus, RunStep};
+use core_types::marketplace::{MarketplaceTemplate, MarketplaceTemplateComplexity, MarketplaceTemplateStep};
+use core_types::run::{AgentRun, RunHistoryEntry, RunStatus, RunStep, StepResultEntry};
 use core_types::tool::{ToolCall, ToolResult, ToolSchema};
 use core_types::user::{Permission, Tenant, User};
 use schemars::schema_for;
@@ -11,9 +12,14 @@ fn main() {
     let root_schemas = vec![
         serde_json::to_value(schema_for!(AgentConfig)).unwrap(),
         serde_json::to_value(schema_for!(AgentVersion)).unwrap(),
+        serde_json::to_value(schema_for!(MarketplaceTemplate)).unwrap(),
+        serde_json::to_value(schema_for!(MarketplaceTemplateComplexity)).unwrap(),
+        serde_json::to_value(schema_for!(MarketplaceTemplateStep)).unwrap(),
         serde_json::to_value(schema_for!(AgentRun)).unwrap(),
+        serde_json::to_value(schema_for!(RunHistoryEntry)).unwrap(),
         serde_json::to_value(schema_for!(RunStep)).unwrap(),
         serde_json::to_value(schema_for!(RunStatus)).unwrap(),
+        serde_json::to_value(schema_for!(StepResultEntry)).unwrap(),
         serde_json::to_value(schema_for!(ToolSchema)).unwrap(),
         serde_json::to_value(schema_for!(ToolCall)).unwrap(),
         serde_json::to_value(schema_for!(ToolResult)).unwrap(),
@@ -112,6 +118,15 @@ fn convert_definition(name: &str, def: &Value) -> String {
         let variants: Vec<String> = one_of
             .iter()
             .filter_map(|variant| {
+                if variant.get("type").and_then(|t| t.as_str()) == Some("string") {
+                    return variant
+                        .get("enum")
+                        .and_then(|e| e.as_array())
+                        .and_then(|values| values.first())
+                        .and_then(|value| value.as_str())
+                        .map(|value| format!("  | \"{}\"", value));
+                }
+
                 let props = variant.get("properties")?.as_object()?;
                 let (tag_name, inner_schema) = props.iter().next()?;
                 let inner = convert_object_inline(inner_schema);
@@ -183,6 +198,53 @@ fn convert_object_inline(schema: &Value) -> String {
 
 /// Maps a JSON Schema type reference to a TypeScript type string.
 fn resolve_ts_type(schema: &Value) -> String {
+    if let Some(any_of) = schema.get("anyOf").and_then(|a| a.as_array()) {
+        let variants: Vec<String> = any_of
+            .iter()
+            .filter(|variant| !is_null_schema(variant))
+            .map(resolve_ts_type)
+            .collect();
+
+        if !variants.is_empty() {
+            return variants.join(" | ");
+        }
+    }
+
+    if let Some(one_of) = schema.get("oneOf").and_then(|a| a.as_array()) {
+        let variants: Vec<String> = one_of
+            .iter()
+            .filter(|variant| !is_null_schema(variant))
+            .map(resolve_ts_type)
+            .collect();
+
+        if !variants.is_empty() {
+            return variants.join(" | ");
+        }
+    }
+
+    if let Some(types) = schema.get("type").and_then(|t| t.as_array()) {
+        let variants: Vec<String> = types
+            .iter()
+            .filter_map(|variant| {
+                let schema = Value::Object(
+                    [("type".to_string(), variant.clone())]
+                        .into_iter()
+                        .collect(),
+                );
+
+                if is_null_schema(&schema) {
+                    None
+                } else {
+                    Some(resolve_ts_type(&schema))
+                }
+            })
+            .collect();
+
+        if !variants.is_empty() {
+            return variants.join(" | ");
+        }
+    }
+
     // Handle $ref
     if let Some(ref_path) = schema.get("$ref").and_then(|r| r.as_str()) {
         return ref_path.rsplit('/').next().unwrap_or("unknown").to_string();
@@ -217,5 +279,13 @@ fn resolve_ts_type(schema: &Value) -> String {
             "Record<string, unknown>".to_string()
         }
         _ => "unknown".to_string(),
+    }
+}
+
+fn is_null_schema(schema: &Value) -> bool {
+    match schema.get("type") {
+        Some(Value::String(kind)) => kind == "null",
+        Some(Value::Array(kinds)) => kinds.iter().any(|kind| kind.as_str() == Some("null")),
+        _ => false,
     }
 }

@@ -1,8 +1,9 @@
+import { redirect } from "next/navigation";
+
 /**
- * Renders the marketplace template detail placeholder.
- *
- * Replace this with a detail view that supports previewing and forking a template safely.
+ * Redirects template detail routes to the live marketplace catalog until a dedicated
+ * deep-linked detail experience is implemented.
  */
 export default function MarketplaceTemplatePage() {
-  return <main>Marketplace template placeholder.</main>;
+  redirect("/marketplace");
 }

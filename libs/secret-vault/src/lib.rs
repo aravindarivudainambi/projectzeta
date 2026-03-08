@@ -16,7 +16,7 @@ pub struct ScopedToken {
 /// Represents the credential storage facade used by the connector hub.
 ///
 /// This mock implementation reads static provider tokens from environment
-/// variables (for example `MOCK_TOKEN_SLACK=xoxb-...`) and keeps them in-memory.
+/// variables (for example `MOCK_TOKEN_NOTION=secret_...`) and keeps them in-memory.
 /// Keys are stored as `(UserId, provider)` for forward compatibility, while
 /// lookups currently ignore user scoping by design.
 ///
@@ -32,10 +32,10 @@ impl SecretVault {
     /// and process environment.
     ///
     /// Example:
-    /// - `MOCK_TOKEN_SLACK=xoxb-123`
-    /// - `MOCK_TOKEN_GITHUB=ghp_abc`
+    /// - `MOCK_TOKEN_NOTION=secret_123`
+    /// - `MOCK_TOKEN_GOOGLE_WORKSPACE=ya29.a0...`
     ///
-    /// Tokens are normalized to lowercase provider names (`slack`, `github`).
+    /// Tokens are normalized to lowercase provider names (`notion`, `google_workspace`).
     pub fn from_env() -> Self {
         let _ = dotenvy::dotenv();
 
@@ -133,15 +133,15 @@ mod tests {
     fn get_token_returns_provider_token_regardless_of_user_id() {
         let mut tokens = HashMap::new();
         tokens.insert(
-            (Uuid::nil(), "slack".to_string()),
-            "xoxb-test-token".to_string(),
+            (Uuid::nil(), "google_workspace".to_string()),
+            "ya29.test-token".to_string(),
         );
         let vault = SecretVault::from_tokens(tokens);
 
         let token = vault
-            .get_token(Uuid::new_v4(), "slack")
-            .expect("slack token should resolve");
-        assert_eq!(token, "xoxb-test-token");
+            .get_token(Uuid::new_v4(), "google_workspace")
+            .expect("google token should resolve");
+        assert_eq!(token, "ya29.test-token");
     }
 
     #[test]

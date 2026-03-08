@@ -1,6 +1,6 @@
 use std::pin::Pin;
 
-use anyhow::{Context, Result};
+use anyhow::{bail, Context, Result};
 use futures_core::Stream;
 use reqwest::Client;
 use serde_json::Value;
@@ -37,14 +37,14 @@ impl OpenAiProvider {
             std::env::var("GITHUB_MODELS_API_KEY").context("GITHUB_MODELS_API_KEY not set")?;
         let base_url = std::env::var("GITHUB_MODELS_BASE_URL")
             .unwrap_or_else(|_| "https://models.inference.ai.azure.com".to_string());
-        let model = std::env::var("GITHUB_MODELS_MODEL").unwrap_or_else(|_| "gpt-4o".to_string());
+        let model = std::env::var("GITHUB_MODELS_MODEL").unwrap_or_else(|_| "gpt-5".to_string());
         Ok(Self::new(api_key, base_url, model))
     }
 }
 
 impl LlmProvider for OpenAiProvider {
     fn generate(&self, _prompt: &str) -> Result<String> {
-        todo!("Use complete_stream for all calls; non-streaming generate is not needed yet.")
+        bail!("Non-streaming OpenAI generation is unsupported; use complete_stream instead.")
     }
 
     /// Streams a chat completion from the GitHub Models (OpenAI-compatible) API.

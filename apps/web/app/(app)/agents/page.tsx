@@ -1,10 +1,20 @@
-import type { AgentConfig } from "@schema-types";
+import AgentsClient from "./AgentsClient";
+import { loadMarketplaceTemplates, userConnectedTools } from "@/lib/marketplace";
 
 /**
- * Renders the agents index placeholder.
+ * Renders the agents marketplace / index.
  *
- * Replace this with a server-rendered list view backed by the typed API client.
+ * This lists pre-built agent templates that users can browse and fork.
  */
-export default function AgentsPage() {
-  return <main>Agents list placeholder.</main>;
+export default async function AgentsPage() {
+  const templates = await loadMarketplaceTemplates();
+
+  return (
+    <main className="h-full bg-white ">
+      <AgentsClient
+        initialTemplates={templates}
+        userConnectedTools={userConnectedTools}
+      />
+    </main>
+  );
 }

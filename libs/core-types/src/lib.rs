@@ -2,6 +2,7 @@
 
 pub mod agent;
 pub mod events;
+pub mod marketplace;
 pub mod run;
 pub mod tool;
 pub mod user;

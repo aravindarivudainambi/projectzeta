@@ -13,13 +13,13 @@ interface ApprovalModalProps {
   contextData?: any;
 }
 
-export function ApprovalModal({ 
-  isOpen, 
-  actionDescription, 
-  riskLevel, 
-  onApprove, 
+export function ApprovalModal({
+  isOpen,
+  actionDescription,
+  riskLevel,
+  onApprove,
   onReject,
-  contextData
+  contextData,
 }: ApprovalModalProps) {
   if (!isOpen) return null;
 
@@ -31,61 +31,72 @@ export function ApprovalModal({
 
   return (
     <AnimatePresence>
-      <div className="fixed inset-0 z-50 flex items-center justify-center p-4 bg-black/60 backdrop-blur-sm">
-        <motion.div 
+      <div className="fixed inset-0 z-50 flex items-center justify-center bg-black/30 p-4 backdrop-blur-sm">
+        <motion.div
           initial={{ opacity: 0, scale: 0.95 }}
           animate={{ opacity: 1, scale: 1 }}
           exit={{ opacity: 0, scale: 0.95 }}
-          className="bg-slate-900 border border-slate-700 w-full max-w-lg rounded-xl shadow-2xl overflow-hidden flex flex-col"
+          className="flex w-full max-w-lg flex-col overflow-hidden rounded-xl border border-zinc-200 bg-white shadow-2xl"
           role="dialog"
           aria-modal="true"
         >
           {/* Header */}
-          <div className="px-6 py-4 border-b border-slate-800 flex items-center gap-3">
-            <div className="p-2 bg-amber-500/10 rounded-full text-amber-500">
+          <div className="flex items-center gap-3 border-b border-zinc-200 px-6 py-4">
+            <div className="rounded-full bg-amber-100 p-2 text-amber-600">
               <ShieldAlert className="w-6 h-6" />
             </div>
             <div>
-              <h2 className="text-lg font-semibold text-slate-100">Human Approval Required</h2>
-              <p className="text-sm text-slate-400">This action requires explicit sign-off to proceed.</p>
+              <h2 className="text-lg font-semibold text-zinc-950">
+                Human Approval Required
+              </h2>
+              <p className="text-sm text-zinc-500">
+                This action requires explicit sign-off to proceed.
+              </p>
             </div>
           </div>
 
           {/* Content */}
           <div className="p-6 flex flex-col gap-4">
             <div className="flex items-start justify-between gap-4">
-              <div className="text-slate-200 font-medium">
+              <div className="font-medium text-zinc-900">
                 {actionDescription}
               </div>
-              <div className={clsx("px-2.5 py-1 rounded text-xs font-bold border whitespace-nowrap", riskStyles)}>
+              <div
+                className={clsx(
+                  "px-2.5 py-1 rounded text-xs font-bold border whitespace-nowrap",
+                  riskStyles,
+                )}
+              >
                 {riskLevel} RISK
               </div>
             </div>
 
             {contextData && (
-              <div className="bg-slate-950 border border-slate-800 rounded-md p-3 mt-2 overflow-hidden">
-                <div className="text-xs font-semibold text-slate-500 mb-2 uppercase tracking-wider">Requested Tool Arguments</div>
-                <pre className="text-xs font-mono text-emerald-400/80 overflow-x-auto m-0 bg-transparent">
+              <div className="mt-2 overflow-hidden rounded-md border border-zinc-200 bg-zinc-50 p-3">
+                <div className="mb-2 text-xs font-semibold uppercase tracking-wider text-zinc-500">
+                  Requested Tool Arguments
+                </div>
+                <pre className="m-0 overflow-x-auto bg-transparent font-mono text-xs text-emerald-700">
                   {JSON.stringify(contextData, null, 2)}
                 </pre>
               </div>
             )}
-            
-            <div className="flex items-center gap-2 mt-2 text-sm text-slate-400">
+
+            <div className="mt-2 flex items-center gap-2 text-sm text-zinc-500">
               <AlertTriangle className="w-4 h-4 text-amber-500" />
               <span>Approving this action cannot be undone.</span>
             </div>
           </div>
 
           {/* Footer controls */}
-          <div className="px-6 py-4 border-t border-slate-800 bg-slate-900/50 flex items-center justify-end gap-3">
-            <button 
+          <div className="flex items-center justify-end gap-3 border-t border-zinc-200 bg-zinc-50 px-6 py-4">
+            <button
               onClick={onReject}
-              className="flex items-center gap-2 px-4 py-2 rounded-lg font-medium text-slate-300 hover:text-white hover:bg-slate-800 transition-colors"
+              className="flex items-center gap-2 rounded-lg px-4 py-2 font-medium text-zinc-600 transition-colors hover:bg-zinc-100 hover:text-zinc-900"
             >
               <X className="w-4 h-4" /> Reject
             </button>
-            <button 
+            <button
               onClick={onApprove}
               className="flex items-center gap-2 px-4 py-2 rounded-lg font-medium text-white bg-emerald-600 hover:bg-emerald-500 transition-colors shadow-sm"
             >

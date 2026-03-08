@@ -20,13 +20,7 @@ struct HubConnectorStatus {
     #[serde(default)]
     notion: bool,
     #[serde(default)]
-    slack: bool,
-    #[serde(default)]
     google_workspace: bool,
-    #[serde(default)]
-    github: bool,
-    #[serde(default)]
-    discord: bool,
 }
 
 /// Returns the list of available connectors with live connection status
@@ -38,10 +32,7 @@ pub async fn list_connectors(
     // Fall back to the gateway's static env var if the hub is unreachable.
     let fallback = HubConnectorStatus {
         notion: state.mock_notion_token.is_some(),
-        slack: false,
-        google_workspace: false,
-        github: false,
-        discord: false,
+        google_workspace: state.mock_google_token.is_some(),
     };
 
     let status = match state
@@ -61,24 +52,9 @@ pub async fn list_connectors(
             connected: status.notion,
         },
         ConnectorInfo {
-            name: "slack".into(),
-            display_name: "Slack".into(),
-            connected: status.slack,
-        },
-        ConnectorInfo {
             name: "google_workspace".into(),
             display_name: "Google Workspace".into(),
             connected: status.google_workspace,
-        },
-        ConnectorInfo {
-            name: "github".into(),
-            display_name: "GitHub".into(),
-            connected: status.github,
-        },
-        ConnectorInfo {
-            name: "discord".into(),
-            display_name: "Discord".into(),
-            connected: status.discord,
         },
     ]))
 }
