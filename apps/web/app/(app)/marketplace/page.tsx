@@ -1,5 +1,8 @@
 import AgentsClient from "../agents/AgentsClient";
-import { loadMarketplaceTemplates, userConnectedTools } from "@/lib/marketplace";
+import {
+  loadMarketplaceTemplates,
+  userConnectedTools,
+} from "@/lib/marketplace";
 
 /**
  * Renders the backend-backed marketplace catalog.

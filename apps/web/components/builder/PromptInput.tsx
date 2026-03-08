@@ -1,7 +1,7 @@
-import React, { useRef, useEffect } from 'react';
-import { Send, Sparkles } from 'lucide-react';
-import { cn } from '@/lib/utils';
-import { motion } from 'framer-motion';
+import React, { useRef, useEffect } from "react";
+import { Send, Sparkles } from "lucide-react";
+import { cn } from "@/lib/utils";
+import { motion } from "framer-motion";
 
 interface PromptInputProps {
   value: string;
@@ -14,22 +14,28 @@ interface PromptInputProps {
 const EXAMPLES = [
   "Summarize Gmail updates into a Notion page every Friday",
   "Create a Google Calendar event when a Notion task is approved",
-  "Search Google Drive for onboarding docs and save the summary to Notion"
+  "Search Google Drive for onboarding docs and save the summary to Notion",
 ];
 
-export function PromptInput({ value, onChange, onSubmit, isStreaming, hasError }: PromptInputProps) {
+export function PromptInput({
+  value,
+  onChange,
+  onSubmit,
+  isStreaming,
+  hasError,
+}: PromptInputProps) {
   const textareaRef = useRef<HTMLTextAreaElement>(null);
 
   // Auto-resize textarea
   useEffect(() => {
     if (textareaRef.current) {
-      textareaRef.current.style.height = 'auto';
+      textareaRef.current.style.height = "auto";
       textareaRef.current.style.height = `${Math.max(64, textareaRef.current.scrollHeight)}px`;
     }
   }, [value]);
 
   const handleKeyDown = (e: React.KeyboardEvent<HTMLTextAreaElement>) => {
-    if (e.key === 'Enter' && !e.shiftKey) {
+    if (e.key === "Enter" && !e.shiftKey) {
       e.preventDefault();
       if (!isStreaming) onSubmit();
     }
@@ -49,7 +55,9 @@ export function PromptInput({ value, onChange, onSubmit, isStreaming, hasError }
           transition={{ duration: 0.4 }}
           className={cn(
             "relative rounded-2xl border bg-white shadow-sm overflow-hidden transition-all duration-200",
-            hasError ? "border-red-500 shadow-red-500/10" : "border-zinc-200 focus-within:border-zinc-300 focus-within:shadow-md focus-within:ring-4 focus-within:ring-zinc-100"
+            hasError
+              ? "border-red-500 shadow-red-500/10"
+              : "border-zinc-200 focus-within:border-zinc-300 focus-within:shadow-md focus-within:ring-4 focus-within:ring-zinc-100",
           )}
         >
           <textarea
@@ -61,18 +69,18 @@ export function PromptInput({ value, onChange, onSubmit, isStreaming, hasError }
             className="w-full resize-none bg-transparent px-5 py-5 pr-14 outline-none min-h-[64px] max-h-[400px] text-zinc-900 placeholder:text-zinc-400 placeholder:font-light"
             disabled={isStreaming}
           />
-          
+
           <div className="absolute right-3 bottom-3 flex items-center justify-center">
             <button
               type="button"
               onClick={() => onSubmit()}
-              disabled={!(value || '').trim() || isStreaming}
+              disabled={!(value || "").trim() || isStreaming}
               aria-label="Generate agent configuration"
               className={cn(
                 "p-2 rounded-xl flex items-center justify-center transition-all duration-200",
-                (value || '').trim() && !isStreaming
+                (value || "").trim() && !isStreaming
                   ? "bg-zinc-900 text-white hover:bg-zinc-800 shadow-sm"
-                  : "bg-zinc-100 text-zinc-400 cursor-not-allowed"
+                  : "bg-zinc-100 text-zinc-400 cursor-not-allowed",
               )}
             >
               <Send className="w-4 h-4" />

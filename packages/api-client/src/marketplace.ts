@@ -13,7 +13,9 @@ export interface ForkMarketplaceTemplatePayload {
 /**
  * Lists curated templates available in the internal marketplace catalog.
  */
-export async function listMarketplaceTemplates(): Promise<MarketplaceTemplate[]> {
+export async function listMarketplaceTemplates(): Promise<
+  MarketplaceTemplate[]
+> {
   const res = await fetch(`${API_BASE}/marketplace`, {
     cache: "no-store",
   });

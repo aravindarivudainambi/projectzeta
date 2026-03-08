@@ -85,18 +85,23 @@ impl NotionClient {
     }
 
     /// Updates page properties.
+    ///
+    /// The Notion PATCH /pages/{page_id} endpoint expects the body to be
+    /// `{"properties": {...}}`. This method wraps `properties` in that
+    /// envelope so callers only need to pass the properties map itself.
     pub async fn update_page(
         &self,
         token: &str,
         page_id: &str,
         properties: Value,
     ) -> Result<Value> {
+        let body = serde_json::json!({ "properties": properties });
         let resp = self
             .http
             .patch(format!("{NOTION_API_BASE}/pages/{page_id}"))
             .bearer_auth(token)
             .header("Notion-Version", NOTION_VERSION)
-            .json(&properties)
+            .json(&body)
             .send()
             .await
             .context("notion: update_page request failed")?;

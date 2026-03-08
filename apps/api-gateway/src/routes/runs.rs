@@ -318,11 +318,48 @@ fn apply_runtime_tool_context(
         }
         "notion_append_block_children" | "notion_create_page" => {
             if let Some(generated) = previous_output.and_then(generated_content_payload) {
-                if object.get("children").is_none() {
+                let missing_children = object.get("children").is_none_or(|value| {
+                    value.is_null() || value.as_array().is_some_and(Vec::is_empty)
+                });
+
+                if missing_children {
                     if let Some(blocks) = generated.get("blocks") {
                         object.insert("children".to_string(), blocks.clone());
                     } else if let Some(content) = generated.get("content").and_then(|value| value.as_str()) {
                         object.insert("children".to_string(), content_blocks_from_text(content));
+                    }
+                }
+            }
+        }
+        "notion_update_page" => {
+            if let Some(generated) = previous_output.and_then(generated_content_payload) {
+                let missing_properties = object.get("properties").is_none_or(|value| {
+                    value.is_null() || value.as_object().is_some_and(|o| o.is_empty())
+                });
+
+                if missing_properties {
+                    // Populate the standard Notion title property from the
+                    // generated title, falling back to the content text.
+                    let title_text = generated
+                        .get("title")
+                        .and_then(|value| value.as_str())
+                        .filter(|value| !value.is_empty())
+                        .or_else(|| {
+                            generated
+                                .get("content")
+                                .and_then(|value| value.as_str())
+                                .filter(|value| !value.is_empty())
+                        });
+
+                    if let Some(text) = title_text {
+                        object.insert(
+                            "properties".to_string(),
+                            json!({
+                                "title": {
+                                    "title": [{ "type": "text", "text": { "content": text } }]
+                                }
+                            }),
+                        );
                     }
                 }
             }
@@ -909,5 +946,70 @@ mod tests {
         assert_eq!(args["to"], json!("qa@example.com"));
         assert_eq!(args["subject"], json!("Weekly status"));
         assert_eq!(args["body"], json!("Everything shipped on time."));
+    }
+
+    #[test]
+    fn runtime_context_populates_notion_update_page_properties_from_generated_title() {
+        let args = apply_runtime_tool_context(
+            "Update the Notion page",
+            "notion_update_page",
+            json!({}),
+            Some(&json!({
+                "tool": "generate_content",
+                "output": {
+                    "title": "Sprint 42 Summary",
+                    "content": "All goals met this sprint."
+                }
+            })),
+            None,
+        );
+
+        let title_entries = args["properties"]["title"]["title"]
+            .as_array()
+            .expect("should have a title property");
+        assert_eq!(
+            title_entries[0]["text"]["content"],
+            json!("Sprint 42 Summary")
+        );
+    }
+
+    #[test]
+    fn runtime_context_does_not_overwrite_existing_notion_update_page_properties() {
+        let args = apply_runtime_tool_context(
+            "Update the Notion page",
+            "notion_update_page",
+            json!({ "properties": { "Status": { "select": { "name": "Done" } } } }),
+            Some(&json!({
+                "tool": "generate_content",
+                "output": { "title": "Sprint 42 Summary" }
+            })),
+            None,
+        );
+
+        // Caller-provided properties must not be replaced.
+        assert!(args["properties"].get("Status").is_some());
+        assert!(args["properties"].get("title").is_none());
+    }
+
+    #[test]
+    fn runtime_context_populates_notion_children_when_children_are_null() {
+        let args = apply_runtime_tool_context(
+            "Create the Notion page",
+            "notion_create_page",
+            json!({ "children": null }),
+            Some(&json!({
+                "tool": "generate_content",
+                "output": {
+                    "content": "Line one\nLine two"
+                }
+            })),
+            None,
+        );
+
+        let children = args["children"]
+            .as_array()
+            .expect("generated content should populate Notion children");
+
+        assert_eq!(children.len(), 2);
     }
 }

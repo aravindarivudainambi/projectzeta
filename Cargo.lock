@@ -52,6 +52,7 @@ dependencies = [
  "chrono",
  "core-types",
  "db",
+ "dotenvy",
  "futures-util",
  "jsonwebtoken",
  "llm-client",

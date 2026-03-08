@@ -40,6 +40,23 @@ impl OpenAiProvider {
         let model = std::env::var("GITHUB_MODELS_MODEL").unwrap_or_else(|_| "gpt-5".to_string());
         Ok(Self::new(api_key, base_url, model))
     }
+
+    /// Creates a provider tuned for content generation tasks.
+    ///
+    /// Uses `GITHUB_MODELS_CONTENT_MODEL` (defaults to `gpt-4o`) which
+    /// typically has much higher rate limits than reasoning models like `gpt-5`.
+    /// Falls back to the standard `GITHUB_MODELS_MODEL` if the content-specific
+    /// variable is not set.
+    pub fn from_env_for_content() -> Result<Self> {
+        let api_key =
+            std::env::var("GITHUB_MODELS_API_KEY").context("GITHUB_MODELS_API_KEY not set")?;
+        let base_url = std::env::var("GITHUB_MODELS_BASE_URL")
+            .unwrap_or_else(|_| "https://models.inference.ai.azure.com".to_string());
+        let model = std::env::var("GITHUB_MODELS_CONTENT_MODEL")
+            .or_else(|_| std::env::var("GITHUB_MODELS_MODEL"))
+            .unwrap_or_else(|_| "gpt-4o".to_string());
+        Ok(Self::new(api_key, base_url, model))
+    }
 }
 
 impl LlmProvider for OpenAiProvider {

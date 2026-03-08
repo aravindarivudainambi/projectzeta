@@ -5,7 +5,9 @@ import type { MarketplaceTemplate } from "@schema-types";
  * Returns marketplace templates from the API gateway, falling back to an empty list
  * when the backend is unavailable so the app can still render a stable shell.
  */
-export async function loadMarketplaceTemplates(): Promise<MarketplaceTemplate[]> {
+export async function loadMarketplaceTemplates(): Promise<
+  MarketplaceTemplate[]
+> {
   try {
     return await listMarketplaceTemplates();
   } catch {

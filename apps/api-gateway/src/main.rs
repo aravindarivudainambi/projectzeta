@@ -15,6 +15,10 @@ use tokio::net::TcpListener;
 /// Boots the API gateway runtime, binds the public listener, and serves routes.
 #[tokio::main]
 async fn main() -> Result<()> {
+    // Load .env before reading any environment variables so that local secrets
+    // (e.g. GITHUB_MODELS_API_KEY) are available to all downstream calls.
+    dotenvy::dotenv().ok();
+
     telemetry::init_telemetry("api-gateway")?;
 
     let config = config::Config::from_env()?;

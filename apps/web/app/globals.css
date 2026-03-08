@@ -39,7 +39,11 @@ body {
 
 body.monochrome-theme {
   background:
-    radial-gradient(circle at top, rgba(255, 255, 255, 0.08), transparent 0 28%),
+    radial-gradient(
+      circle at top,
+      rgba(255, 255, 255, 0.08),
+      transparent 0 28%
+    ),
     linear-gradient(180deg, #121212 0%, #080808 32%, #030303 100%);
   color: var(--mono-text);
   filter: grayscale(1);
@@ -53,7 +57,8 @@ body.monochrome-theme a:hover {
   color: #ffffff;
 }
 
-body.monochrome-theme :is(nav, main, section, article, aside, header, footer, dialog) {
+body.monochrome-theme
+  :is(nav, main, section, article, aside, header, footer, dialog) {
   border-color: var(--mono-border);
 }
 
@@ -120,7 +125,9 @@ body.monochrome-theme [class*="from-"] {
 
 body.monochrome-theme [class*="via-"] {
   --tw-gradient-to: rgb(63 63 70 / 0) var(--tw-gradient-to-position) !important;
-  --tw-gradient-stops: var(--tw-gradient-from), #3f3f46 var(--tw-gradient-via-position), var(--tw-gradient-to) !important;
+  --tw-gradient-stops:
+    var(--tw-gradient-from), #3f3f46 var(--tw-gradient-via-position),
+    var(--tw-gradient-to) !important;
 }
 
 body.monochrome-theme [class*="to-"] {

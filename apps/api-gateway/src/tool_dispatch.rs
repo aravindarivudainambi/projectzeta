@@ -164,6 +164,13 @@ async fn collect_llm_response(
     Ok(accumulated)
 }
 
+/// Produces a best-effort fallback payload when the LLM is unreachable.
+///
+/// **Note:** This is intentionally kept but currently unused by the main dispatch
+/// path, which now returns `success: false` on LLM failure so that downstream
+/// tools (e.g. `notion_create_page`) do not write placeholder text into real
+/// pages. Retained for potential future use (e.g. dry-run or preview modes).
+#[allow(dead_code)]
 fn fallback_generated_content_output(
     prompt: &str,
     context: Option<&Value>,
@@ -197,6 +204,26 @@ fn parse_generated_content_output(raw: &str, prompt: &str, target_tool: Option<&
     normalize_generated_content_output(value, prompt, target_tool, "gpt")
 }
 
+/// Extracts a retry wait time from rate-limit error messages.
+///
+/// Parses patterns like "Please wait 51 seconds" commonly returned by
+/// GitHub Models / Azure OpenAI.
+fn parse_retry_after_seconds(error_msg: &str) -> Option<u64> {
+    let lower = error_msg.to_lowercase();
+    if let Some(idx) = lower.find("wait ") {
+        let after = &error_msg[idx + 5..];
+        let digits: String = after.chars().take_while(|c| c.is_ascii_digit()).collect();
+        if let Ok(secs) = digits.parse::<u64>() {
+            // Add a small buffer to avoid hitting the limit again immediately.
+            return Some(secs.saturating_add(2));
+        }
+    }
+    None
+}
+
+/// Maximum number of LLM attempts (initial + retries) before giving up.
+const GENERATE_CONTENT_MAX_ATTEMPTS: usize = 2;
+
 async fn dispatch_generate_content(arguments: &Value) -> anyhow::Result<HubResponse> {
     let prompt = arguments
         .get("prompt")
@@ -226,30 +253,76 @@ async fn dispatch_generate_content(arguments: &Value) -> anyhow::Result<HubRespo
         }
     }
 
-    let output = match OpenAiProvider::from_env() {
-        Ok(provider) => {
-            let messages = vec![
-                ChatMessage {
-                    role: "system".to_string(),
-                    content: system_prompt,
-                },
-                ChatMessage {
-                    role: "user".to_string(),
-                    content: user_prompt,
-                },
-            ];
-
-            match collect_llm_response(provider.complete_stream(messages)).await {
-                Ok(raw) => parse_generated_content_output(&raw, &prompt, target_tool),
-                Err(_) => fallback_generated_content_output(&prompt, context.as_ref(), target_tool),
-            }
+    // Use a dedicated content model (defaults to gpt-4o) which has much
+    // higher rate limits than reasoning models like gpt-5.
+    let provider = match OpenAiProvider::from_env_for_content() {
+        Ok(p) => p,
+        Err(err) => {
+            eprintln!("[generate_content] LLM provider unavailable: {err}");
+            return Ok(HubResponse {
+                success: false,
+                output: json!({
+                    "error": format!(
+                        "Content generation failed: LLM provider is not configured ({err}). \
+                         Set GITHUB_MODELS_API_KEY in the environment."
+                    )
+                }),
+            });
         }
-        Err(_) => fallback_generated_content_output(&prompt, context.as_ref(), target_tool),
     };
 
+    let messages = vec![
+        ChatMessage {
+            role: "system".to_string(),
+            content: system_prompt,
+        },
+        ChatMessage {
+            role: "user".to_string(),
+            content: user_prompt,
+        },
+    ];
+
+    let mut last_error = String::new();
+
+    for attempt in 1..=GENERATE_CONTENT_MAX_ATTEMPTS {
+        match collect_llm_response(provider.complete_stream(messages.clone())).await {
+            Ok(raw) => {
+                let output = parse_generated_content_output(&raw, &prompt, target_tool);
+                return Ok(HubResponse {
+                    success: true,
+                    output,
+                });
+            }
+            Err(err) => {
+                last_error = err.to_string();
+                eprintln!(
+                    "[generate_content] LLM attempt {attempt}/{GENERATE_CONTENT_MAX_ATTEMPTS} \
+                     failed: {last_error}"
+                );
+                if attempt < GENERATE_CONTENT_MAX_ATTEMPTS {
+                    // Parse wait time from rate-limit errors (e.g. "Please wait 51 seconds").
+                    let wait_secs = parse_retry_after_seconds(&last_error).unwrap_or(2);
+                    eprintln!("[generate_content] waiting {wait_secs}s before retry");
+                    tokio::time::sleep(std::time::Duration::from_secs(wait_secs)).await;
+                }
+            }
+        }
+    }
+
+    // All retries exhausted — report failure so downstream steps (e.g.
+    // notion_create_page) do not receive placeholder text.
+    eprintln!(
+        "[generate_content] all {GENERATE_CONTENT_MAX_ATTEMPTS} attempts failed for prompt: {}",
+        prompt.chars().take(120).collect::<String>()
+    );
+
     Ok(HubResponse {
-        success: true,
-        output,
+        success: false,
+        output: json!({
+            "error": format!(
+                "Content generation failed after {GENERATE_CONTENT_MAX_ATTEMPTS} attempts: {last_error}"
+            )
+        }),
     })
 }
 

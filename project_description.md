@@ -55,11 +55,11 @@ These are the components that separate a winning platform from a commodity tool.
 
 ### ★ Natural-Language Agent Authoring
 
-The most powerful differentiator is letting every employee — from accountants to operations managers — describe what they want in plain English and get a working agent. LangSmith's no-code agent builder demonstrates the model: start with a conversation, the system asks follow-up questions, auto-generates prompts, connects tools, and sets triggers. Zapier Agents take a similar approach where users instruct agents in natural language to pause work, ping humans, or chain actions. The key insight is that roughly 40% of enterprise software is expected to be built using natural-language-driven "vibe coding" by 2026. The builder that nails this experience — where describing the workflow *is* building the workflow — will capture the non-technical 90% of employees that code-first tools cannot reach.[^22][^19][^23]
+The most powerful differentiator is letting every employee — from accountants to operations managers — describe what they want in plain English and get a working agent. LangSmith's no-code agent builder demonstrates the model: start with a conversation, the system asks follow-up questions, auto-generates prompts, connects tools, and sets triggers. Zapier Agents take a similar approach where users instruct agents in natural language to pause work, ping humans, or chain actions. The key insight is that roughly 40% of enterprise software is expected to be built using natural-language-driven "vibe coding" by 2026. The builder that nails this experience — where describing the workflow _is_ building the workflow — will capture the non-technical 90% of employees that code-first tools cannot reach.[^22][^19][^23]
 
 ### ★ Internal Agent Marketplace & Template Sharing
 
-Oracle's AI Agent Marketplace ships 100+ pre-built installable templates spanning different systems and business processes, and Moveworks offers similar template libraries. But the real opportunity is an *internal* marketplace: a curated catalog where employees share their agents with colleagues. When the finance team's invoice-processing agent can be forked and customized by procurement in 10 minutes, you get viral internal adoption and massive switching costs. This also creates a data flywheel — the most-used templates surface to the top, improving discoverability and encouraging further creation.[^24][^25]
+Oracle's AI Agent Marketplace ships 100+ pre-built installable templates spanning different systems and business processes, and Moveworks offers similar template libraries. But the real opportunity is an _internal_ marketplace: a curated catalog where employees share their agents with colleagues. When the finance team's invoice-processing agent can be forked and customized by procurement in 10 minutes, you get viral internal adoption and massive switching costs. This also creates a data flywheel — the most-used templates surface to the top, improving discoverability and encouraging further creation.[^24][^25]
 
 ### ★ Behavioral Versioning, Testing & Rollback
 
@@ -100,20 +100,20 @@ This transforms the builder from a tool into a strategic asset that becomes hard
 
 ## Component Architecture Summary
 
-| Component | Category | Competitive Impact |
-|-----------|----------|-------------------|
-| Universal integration layer (MCP) | Foundational | High — reduces time-to-first-agent |
-| Permissions & access control | Foundational | High — required for enterprise adoption |
-| Credential vault & secret management | Foundational | Medium — solves security blockers |
-| LLM gateway / model router | Foundational | Medium — cost control and flexibility |
-| Observability & monitoring | Foundational | Medium — operational necessity |
-| Human-in-the-loop workflows | Foundational | Medium — trust and compliance |
-| **Natural-language authoring** | **Differentiating** | **Very High — unlocks non-technical users** |
-| **Internal agent marketplace** | **Differentiating** | **Very High — creates network effects** |
-| **Behavioral versioning & rollback** | **Differentiating** | **High — reliability at scale** |
-| **Granular cost attribution** | **Differentiating** | **High — financial control plane** |
-| **Multi-agent orchestration** | **Differentiating** | **High — enables complex workflows** |
-| **Proprietary data flywheel** | **Differentiating** | **Very High — compounding moat** |
+| Component                            | Category            | Competitive Impact                          |
+| ------------------------------------ | ------------------- | ------------------------------------------- |
+| Universal integration layer (MCP)    | Foundational        | High — reduces time-to-first-agent          |
+| Permissions & access control         | Foundational        | High — required for enterprise adoption     |
+| Credential vault & secret management | Foundational        | Medium — solves security blockers           |
+| LLM gateway / model router           | Foundational        | Medium — cost control and flexibility       |
+| Observability & monitoring           | Foundational        | Medium — operational necessity              |
+| Human-in-the-loop workflows          | Foundational        | Medium — trust and compliance               |
+| **Natural-language authoring**       | **Differentiating** | **Very High — unlocks non-technical users** |
+| **Internal agent marketplace**       | **Differentiating** | **Very High — creates network effects**     |
+| **Behavioral versioning & rollback** | **Differentiating** | **High — reliability at scale**             |
+| **Granular cost attribution**        | **Differentiating** | **High — financial control plane**          |
+| **Multi-agent orchestration**        | **Differentiating** | **High — enables complex workflows**        |
+| **Proprietary data flywheel**        | **Differentiating** | **Very High — compounding moat**            |
 
 ## Strategic Considerations for Founders
 
@@ -206,4 +206,3 @@ The biggest enterprises (Microsoft, Salesforce, Google) are building their own a
 36. [Top 20 AI Agent Builder Platforms (Complete 2026 Guide)](https://www.vellum.ai/blog/top-ai-agent-builder-platforms-complete-guide) - Compare the top AI agent builder platforms of 2026 and learn which tools actually work for automatin...
 
 37. [The Best AI Agent and Workflow Builder Platforms: 2026 Guide](https://www.stack-ai.com/blog/the-best-ai-agent-and-workflow-builder-platforms-2026-guide) - Compare the top AI agent and workflow builder platforms for 2026. Learn use cases, security tradeoff...
-

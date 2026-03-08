@@ -51,7 +51,7 @@ pub async fn build_agent(
         .unwrap_or_else(|_| "[]".to_string());
 
     let system_prompt = format!(
-        "You are an agent config generator for an internal agent builder. Convert the user's natural-language workflow into an agentic workflow and respond ONLY with valid JSON matching this schema:\n\n{schema_json}\n\nSupported tools for this product slice:\n{supported_tools_json}\n\nRequirements:\n- Always produce a concise agent `name`.\n- Always choose the best `trigger` variant. Use `Manual` when no schedule or event source is implied.\n- Always produce an ordered `steps` array with actionable step names.\n- Set `tool_name` only when a step calls one of the supported tools above.\n- Never invent Slack, GitHub, Jira, Salesforce, Discord, or any unsupported connector tool. The only internal non-connector tool allowed is `generate_content`.\n- Use the exact snake_case tool identifiers from the supported tools catalog.\n- Prefer `generate_content` for drafting or transforming content before a Gmail or Notion write step.\n- Set `requires_approval` to true for any risky, human-review, or external-write step.\n- Break the workflow into the smallest useful sequence of 2 to 6 steps whenever possible.\n- Do not collapse data collection, reasoning, and delivery into one step. Prefer separate read -> generate_content -> write steps when drafting output is helpful.\n- If multiple supported tool actions are needed, assign each tool action its own step in execution order.\n- When the final destination is unsupported, keep the plan multi-step and end with a human handoff or approval step without inventing a tool.\n- Never assign a tool unless the user request contains enough information to satisfy that tool's required inputs. If required inputs are missing, use a non-tool planning or human handoff step instead of guessing arguments.\n- Do not add retrieval tools just because a connector is mentioned. Only add a read tool when the user explicitly asks to search, list, retrieve, inspect, review, or collect data from that connector.\n- For `google_send_gmail`, only use the tool when the request includes both a recipient and message content that can be inferred from the prompt. If either is missing, do not emit `google_send_gmail`; emit a non-tool step that asks for or waits on the missing delivery details.\n- Never output a tool name that is not present in the supported tools catalog above. If no supported tool fits, leave `tool_name` unset.\n- Do not include commentary, markdown, or code fences. Return JSON only."
+        "You are an agent config generator for an internal agent builder. Convert the user's natural-language workflow into an agentic workflow and respond ONLY with valid JSON matching this schema:\n\n{schema_json}\n\nSupported tools for this product slice:\n{supported_tools_json}\n\nRequirements:\n- Always produce a concise agent `name`.\n- Always choose the best `trigger` variant. Use `Manual` when no schedule or event source is implied.\n- Always produce an ordered `steps` array with actionable step names.\n- Set `tool_name` only when a step calls one of the supported tools above.\n- Never invent Slack, GitHub, Jira, Salesforce, Discord, or any unsupported connector tool. The only internal non-connector tool allowed is `generate_content`.\n- Use the exact snake_case tool identifiers from the supported tools catalog.\n- Prefer `generate_content` for drafting or transforming content before a Gmail or Notion write step.\n- If a workflow creates a new Notion page that should contain body text, place `generate_content` immediately before `notion_create_page` so the generated content can be written into the page instead of leaving it empty.\n- Use `notion_append_block_children` when the user clearly wants to add content to an existing Notion page or block rather than create a new page.\n- Set `requires_approval` to true for any risky, human-review, or external-write step.\n- Break the workflow into the smallest useful sequence of 2 to 6 steps whenever possible.\n- Do not collapse data collection, reasoning, and delivery into one step. Prefer separate read -> generate_content -> write steps when drafting output is helpful.\n- If multiple supported tool actions are needed, assign each tool action its own step in execution order.\n- When the final destination is unsupported, keep the plan multi-step and end with a human handoff or approval step without inventing a tool.\n- Never assign a tool unless the user request contains enough information to satisfy that tool's required inputs. If required inputs are missing, use a non-tool planning or human handoff step instead of guessing arguments.\n- Do not add retrieval tools just because a connector is mentioned. Only add a read tool when the user explicitly asks to search, list, retrieve, inspect, review, or collect data from that connector.\n- For `google_send_gmail`, only use the tool when the request includes both a recipient and message content that can be inferred from the prompt. If either is missing, do not emit `google_send_gmail`; emit a non-tool step that asks for or waits on the missing delivery details.\n- Never output a tool name that is not present in the supported tools catalog above. If no supported tool fits, leave `tool_name` unset.\n- Do not include commentary, markdown, or code fences. Return JSON only."
     );
 
     let messages = vec![
@@ -153,8 +153,110 @@ fn normalize_agent_config(mut config: AgentConfig, description: &str) -> AgentCo
     } else {
         config.steps.into_iter().map(normalize_existing_step).collect()
     };
+    config.steps = ensure_generated_content_handoff(config.steps, description);
 
     config
+}
+
+/// Ensures downstream tools that need drafted text receive it from the
+/// immediately preceding `generate_content` step.
+fn ensure_generated_content_handoff(
+    mut steps: Vec<AgentStep>,
+    description: &str,
+) -> Vec<AgentStep> {
+    let mut index = 0;
+
+    while index < steps.len() {
+        let Some(tool_name) = steps[index].tool_name.as_deref() else {
+            index += 1;
+            continue;
+        };
+
+        if !requires_generated_content_handoff(tool_name) {
+            index += 1;
+            continue;
+        }
+
+        let has_generate_content_before = index > 0
+            && steps[index - 1].tool_name.as_deref() == Some("generate_content");
+
+        if has_generate_content_before {
+            index += 1;
+            continue;
+        }
+
+        steps.insert(
+            index,
+            AgentStep {
+                id: Uuid::new_v4(),
+                name: default_content_generation_step_name(tool_name, description),
+                tool_name: Some("generate_content".to_string()),
+                requires_approval: false,
+            },
+        );
+
+        index += 2;
+    }
+
+    steps
+}
+
+fn requires_generated_content_handoff(tool_name: &str) -> bool {
+    matches!(
+        tool_name,
+        "google_send_gmail"
+            | "notion_create_page"
+            | "notion_update_page"
+            | "notion_append_block_children"
+    )
+}
+
+/// Extracts the subject clause from a description by scanning for common prepositions.
+///
+/// For example, "Create a Notion page about classical physics" → "classical physics".
+fn extract_description_subject(description: &str) -> Option<&str> {
+    let lower = description.to_lowercase();
+    for prefix in ["about ", "on ", "regarding ", "for ", "covering "] {
+        if let Some(idx) = lower.find(prefix) {
+            let raw = description[idx + prefix.len()..].trim().trim_matches('.');
+            let subject = raw
+                .split(|c: char| c == ',' || c == ';')
+                .next()
+                .unwrap_or(raw)
+                .trim();
+            if !subject.is_empty() {
+                return Some(subject);
+            }
+        }
+    }
+    None
+}
+
+/// Derives a topic-aware content-generation step name whose text will serve as the
+/// LLM prompt inside `dispatch_generate_content`.
+fn draft_step_name_from_description(downstream_tool: Option<&str>, description: &str) -> String {
+    let subject = extract_description_subject(description);
+    let trimmed = description.trim().trim_matches('.');
+
+    match downstream_tool {
+        Some("notion_create_page") => subject
+            .map(|s| format!("Draft a Notion page about {s}"))
+            .unwrap_or_else(|| format!("Draft Notion page content: {trimmed}")),
+        Some("notion_update_page") => subject
+            .map(|s| format!("Draft updated Notion content about {s}"))
+            .unwrap_or_else(|| format!("Draft updated content: {trimmed}")),
+        Some("notion_append_block_children") => subject
+            .map(|s| format!("Draft content to append about {s}"))
+            .unwrap_or_else(|| format!("Draft content to append: {trimmed}")),
+        Some("google_send_gmail") => subject
+            .map(|s| format!("Draft the email about {s}"))
+            .unwrap_or_else(|| "Draft the email content".to_string()),
+        _ => default_analysis_step_name(description),
+    }
+}
+
+fn default_content_generation_step_name(tool_name: &str, description: &str) -> String {
+    draft_step_name_from_description(Some(tool_name), description)
 }
 
 /// Determines whether a generated plan should be expanded into smaller steps.
@@ -266,12 +368,18 @@ fn ensure_reasoning_step(mut steps: Vec<AgentStep>, description: &str) -> Vec<Ag
                 let write_tool = steps
                     .get(write_index)
                     .and_then(|step| step.tool_name.as_deref());
+                let reasoning_tool = analysis_tool_name(description, write_tool);
+                let reasoning_name = if reasoning_tool.as_deref() == Some("generate_content") {
+                    draft_step_name_from_description(write_tool, description)
+                } else {
+                    default_analysis_step_name(description)
+                };
                 steps.insert(
                     write_index,
                     AgentStep {
                         id: Uuid::new_v4(),
-                        name: default_analysis_step_name(description),
-                        tool_name: analysis_tool_name(description, write_tool),
+                        name: reasoning_name,
+                        tool_name: reasoning_tool,
                         requires_approval: false,
                     },
                 );
@@ -299,9 +407,18 @@ fn build_default_steps(description: &str) -> Vec<AgentStep> {
         requires_approval: false,
     }];
 
+    // Use a topic-aware name when the analysis step calls `generate_content` so
+    // the step name doubles as a meaningful LLM prompt (e.g. "Draft a Notion
+    // page about classical physics" instead of "Prepare the final action").
+    let analysis_step_name = if analysis_tool.as_deref() == Some("generate_content") {
+        draft_step_name_from_description(write_tool.as_deref(), description)
+    } else {
+        default_analysis_step_name(description)
+    };
+
     steps.push(AgentStep {
         id: Uuid::new_v4(),
-        name: default_analysis_step_name(description),
+        name: analysis_step_name,
         tool_name: analysis_tool,
         requires_approval: false,
     });
@@ -721,8 +838,9 @@ fn sentence_case(input: &str) -> String {
 
 #[cfg(test)]
 mod tests {
-    use super::{fallback_agent_config, infer_trigger, json_tokens};
-    use core_types::agent::Trigger;
+    use super::{fallback_agent_config, infer_trigger, json_tokens, normalize_agent_config};
+    use core_types::agent::{AgentConfig, AgentStep, Trigger};
+    use uuid::Uuid;
 
     #[test]
     fn fallback_config_serializes_and_parses_as_agent_config() {
@@ -797,5 +915,67 @@ mod tests {
             Trigger::Schedule { cron } => assert_eq!(cron, "0 9 * * FRI"),
             other => panic!("expected friday schedule trigger, got {other:?}"),
         }
+    }
+
+    #[test]
+    fn generate_content_step_name_reflects_topic_for_notion_page_creation() {
+        let config = fallback_agent_config("Create a notion page about classical physics");
+
+        let content_step = config
+            .steps
+            .iter()
+            .find(|step| step.tool_name.as_deref() == Some("generate_content"))
+            .expect("should have a generate_content step");
+
+        assert!(
+            content_step.name.to_lowercase().contains("classical physics"),
+            "generate_content step name should include the topic so it becomes a useful prompt; got: {:?}",
+            content_step.name
+        );
+    }
+
+    #[test]
+    fn normalize_agent_config_inserts_generate_content_before_notion_page_creation() {
+        let config = AgentConfig {
+            id: Uuid::new_v4(),
+            name: "Escalation Digest".to_string(),
+            trigger: Trigger::Manual,
+            steps: vec![
+                AgentStep {
+                    id: Uuid::new_v4(),
+                    name: "Search Gmail for escalations".to_string(),
+                    tool_name: Some("google_search_gmail".to_string()),
+                    requires_approval: false,
+                },
+                AgentStep {
+                    id: Uuid::new_v4(),
+                    name: "Review the findings".to_string(),
+                    tool_name: None,
+                    requires_approval: false,
+                },
+                AgentStep {
+                    id: Uuid::new_v4(),
+                    name: "Create the Notion page".to_string(),
+                    tool_name: Some("notion_create_page".to_string()),
+                    requires_approval: true,
+                },
+            ],
+        };
+
+        let normalized = normalize_agent_config(
+            config,
+            "Search Gmail for escalations and create a Notion page with the findings",
+        );
+        let write_index = normalized
+            .steps
+            .iter()
+            .position(|step| step.tool_name.as_deref() == Some("notion_create_page"))
+            .expect("normalized config should retain the Notion create step");
+
+        assert!(write_index > 0);
+        assert_eq!(
+            normalized.steps[write_index - 1].tool_name.as_deref(),
+            Some("generate_content")
+        );
     }
 }

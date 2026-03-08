@@ -136,19 +136,30 @@ function detectConnectors(value: string): ConnectorDefinition[] {
 function containsEmailAddress(value: string) {
   return value
     .split(/\s+/)
-    .map((part) => part.replace(/^[<>()\[\]{}"'.,;:]+|[<>()\[\]{}"'.,;:]+$/g, ""))
+    .map((part) =>
+      part.replace(/^[<>()\[\]{}"'.,;:]+|[<>()\[\]{}"'.,;:]+$/g, ""),
+    )
     .some((part) => {
       const atIndex = part.indexOf("@");
-      return atIndex > 0 && atIndex < part.length - 1 && part.slice(atIndex + 1).includes(".");
+      return (
+        atIndex > 0 &&
+        atIndex < part.length - 1 &&
+        part.slice(atIndex + 1).includes(".")
+      );
     });
 }
 
 function containsMessageContent(value: string) {
   const normalized = value.toLowerCase();
   return (
-    [" saying ", " that says ", " with body ", " body ", " message ", " subject "].some(
-      (marker) => normalized.includes(marker),
-    ) ||
+    [
+      " saying ",
+      " that says ",
+      " with body ",
+      " body ",
+      " message ",
+      " subject ",
+    ].some((marker) => normalized.includes(marker)) ||
     (value.match(/"/g)?.length ?? 0) >= 2 ||
     (value.match(/'/g)?.length ?? 0) >= 2
   );
@@ -158,10 +169,7 @@ function canSendGmailFromPrompt(value: string) {
   return containsEmailAddress(value) && containsMessageContent(value);
 }
 
-function inferGoogleToolName(
-  value: string,
-  mode: "read" | "write" = "read",
-) {
+function inferGoogleToolName(value: string, mode: "read" | "write" = "read") {
   const normalized = value.toLowerCase();
 
   if (
@@ -170,10 +178,10 @@ function inferGoogleToolName(
     normalized.includes("inbox")
   ) {
     if (
-      (mode === "write" ||
+      mode === "write" ||
       normalized.includes("send") ||
       normalized.includes("reply") ||
-      normalized.includes("draft"))
+      normalized.includes("draft")
     ) {
       return canSendGmailFromPrompt(value) ? "google_send_gmail" : undefined;
     }
@@ -224,7 +232,10 @@ function inferGoogleToolName(
       return "google_get_calendar_event";
     }
 
-    if (normalized.includes("list calendars") || normalized.includes("all calendars")) {
+    if (
+      normalized.includes("list calendars") ||
+      normalized.includes("all calendars")
+    ) {
       return "google_list_calendars";
     }
 
@@ -264,10 +275,7 @@ function inferGoogleToolName(
   return undefined;
 }
 
-function inferNotionToolName(
-  value: string,
-  mode: "read" | "write" = "read",
-) {
+function inferNotionToolName(value: string, mode: "read" | "write" = "read") {
   const normalized = value.toLowerCase();
 
   if (normalized.includes("update") || normalized.includes("edit")) {
@@ -313,7 +321,9 @@ function inferToolName(
   mode: "read" | "write" = "read",
 ) {
   const preferredConnector = preferredConnectorId
-    ? connectorDefinitions.find((connector) => connector.id === preferredConnectorId)
+    ? connectorDefinitions.find(
+        (connector) => connector.id === preferredConnectorId,
+      )
     : detectConnectors(value)[0];
 
   if (!preferredConnector) {
@@ -382,7 +392,9 @@ function guessTrigger(
   if (primaryConnectorId === "notion") {
     return {
       Event: {
-        event: normalized.includes("database") ? "database.item.updated" : "page.updated",
+        event: normalized.includes("database")
+          ? "database.item.updated"
+          : "page.updated",
         source: "notion",
       },
     };
